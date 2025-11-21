@@ -1,0 +1,13 @@
+# Dépendances Python
+venv/
+__pycache__/
+*.pyc
+
+# Fichiers temporaires générés par votre code
+*.mp3
+*.pdf
+# Si vous aviez des fichiers .ttf
+*.ttf
+
+# Dossier local (optionnel)
+.vscode/

@@ -1,0 +1,9 @@
+streamlit
+google-genai
+pdf2image
+Pillow
+gTTS
+PyPDF2
+pandas
+requests
+reportlab
