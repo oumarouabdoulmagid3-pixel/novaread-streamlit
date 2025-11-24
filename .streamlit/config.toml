@@ -1,0 +1,4 @@
+# Contenu du fichier .streamlit/config.toml
+
+[theme]
+base = "light"
