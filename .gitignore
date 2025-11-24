@@ -10,4 +10,4 @@ __pycache__/
 *.ttf
 
 # Dossier local (optionnel)
-.vscode/
+.vscode/.streamlit/secrets.toml
