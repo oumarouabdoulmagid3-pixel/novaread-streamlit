@@ -69,7 +69,7 @@ Missions : Contribuer à la Transformation Numérique du Niger et de l'Afrique e
 Domaines d'expertise: RÉSEAUX INFORMATIQUES, TELECOMS, SERVEURS & CLOUD, CYBERSECURITE, LOGICIELS WEB & MOBILE, INTELLIGENCE ARTIFICIELLE (IA), ENERGIE, ELECTRONIQUE, Formations et Certifications IT, CONSULTING.
 """
 
-# --- MODIFICATION D'ÉTAT : INITIALISATION (Identique à votre version précédente) ---
+# --- MODIFICATION D'ÉTAT : INITIALISATION ---
 if "receiver_email" not in st.session_state:
     st.session_state["receiver_email"] = DEFAULT_RECEIVER_EMAIL
 if "analyse_completee" not in st.session_state:
@@ -86,6 +86,9 @@ if "num_pages_analyzed" not in st.session_state:
     st.session_state["num_pages_analyzed"] = 0
 if "last_uploaded_pdf_name" not in st.session_state:
     st.session_state["last_uploaded_pdf_name"] = None
+# NOUVEL ÉTAT POUR L'ENVOI AUTOMATIQUE
+if "auto_email_sent" not in st.session_state:
+    st.session_state["auto_email_sent"] = False
 # --- FIN MODIFICATION D'ÉTAT ---
 
 
@@ -342,7 +345,33 @@ def analyze_opportunity_strategically(
     return {"Bénéfice Directeur": benefice, "Mise en Oeuvre": mise_en_oeuvre}
 
 
-# --- FONCTIONS GENERATION DE CONTENU (Script/Audio/PDF) ---
+# --- FONCTIONS GENERATION DE CONTENU (Script/Audio/PDF/Email) ---
+
+
+def get_email_content(script_content, is_auto=False):
+    """Génère le sujet et le corps de l'email."""
+    tag = " (ENVOI AUTO)" if is_auto else ""
+    subject = f"Veille Stratégique NOVATECH - Journal du {pd.Timestamp.now().strftime('%d/%m/%Y')} (via NovaReader{tag})"
+
+    email_body = f"""
+Bonjour Monsieur le Directeur,
+
+Veuillez trouver ci-joint les documents de veille stratégique analysés par NovaReader :
+
+1. Fichier Audio (briefing_audio.mp3) : Un résumé vocal concis des opportunités clés du jour.
+2. Rapport Détaillé (rapport_strategique_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf) : Le rapport complet avec l'analyse stratégique 'Bénéfice Directeur' et 'Mise en Œuvre' pour chaque opportunité.
+
+Vous trouverez également le script complet du briefing ci-dessous :
+---
+{script_content}
+---
+
+Cordialement,
+
+Votre Assistant IA
+Novatech - Veille Stratégique
+"""
+    return subject, email_body
 
 
 def generate_script(all_opportunities):
@@ -548,7 +577,7 @@ def send_email_pro(
         )
 
 
-# --- FONCTIONS DE VUE (NOUVEAU) ---
+# --- FONCTIONS DE VUE ---
 
 
 def display_opportunity_card(opp):
@@ -593,7 +622,7 @@ with col_pdf:
         "📥 1. Le Journal (PDF chiffré)", type="pdf", key="pdf_uploader"
     )
 
-    # Logique de réinitialisation d'état
+    # Logique de réinitialisation d'état (AJOUT DE auto_email_sent)
     if (
         uploaded_pdf
         and st.session_state.get("last_uploaded_pdf_name") != uploaded_pdf.name
@@ -603,6 +632,7 @@ with col_pdf:
     ):
         st.session_state["analyse_completee"] = False
         st.session_state["num_pages_analyzed"] = 0
+        st.session_state["auto_email_sent"] = False  # Réinitialisation
         st.session_state["last_uploaded_pdf_name"] = (
             uploaded_pdf.name if uploaded_pdf else None
         )
@@ -677,7 +707,6 @@ if (
 
     try:
         # 1. DÉTERMINATION DU MOT DE PASSE (Logique restaurée)
-        # ... (Logique identique à votre version précédente)
         if password_mode == "Saisie directe (4 caractères)":
             password_content = manual_password.strip()
             if not (password_content and len(password_content) == 4):
@@ -803,14 +832,14 @@ if (
                         page_image, caption=f"Page {i+1}", use_container_width=True
                     )
 
-                # ÉTAPE A : EXTRACTION SIMPLE (titre, secteur, conditions)
+                # ÉTAPE A : EXTRACTION SIMPLE
                 opps = analyze_page_structured(page_image)
 
                 if opps:
                     for op in opps:
                         op["page"] = i + 1
 
-                        # ÉTAPE B : ANALYSE STRATÉGIQUE (NOUVELLE LOGIQUE)
+                        # ÉTAPE B : ANALYSE STRATÉGIQUE
                         st.write(
                             f"🧠 Analyse stratégique de l'opportunité: {op['titre']}..."
                         )
@@ -821,7 +850,6 @@ if (
                             "Bénéfice Directeur"
                         ]
                         op["Mise en Oeuvre"] = strategic_analysis["Mise en Oeuvre"]
-                        # FIN NOUVELLE LOGIQUE
 
                         all_opportunities.append(op)
 
@@ -836,17 +864,58 @@ if (
             with st.spinner("3/3 - Génération du rapport détaillé PDF..."):
                 pdf_bytes = generate_pdf_report(all_opportunities)
 
+            # Sauvegarde des résultats
             st.session_state["analyse_completee"] = True
             st.session_state["all_opportunities"] = all_opportunities
             st.session_state["script_content"] = script_content
             st.session_state["audio_file_bytes"] = audio_file_bytes
             st.session_state["pdf_bytes"] = pdf_bytes
-            st.session_state["num_pages_analyzed"] = len(
-                images
-            )  # Maintient le nombre de pages
+            st.session_state["num_pages_analyzed"] = len(images)
+
+            # --- DÉBUT ENVOI AUTOMATIQUE (NOUVEAU) ---
+            if (
+                audio_file_bytes
+                and pdf_bytes
+                and not st.session_state["auto_email_sent"]
+            ):
+                st.write("📧 Déclenchement de l'envoi automatique de l'email...")
+                receiver_email = st.session_state["receiver_email"]
+
+                auto_subject, auto_email_body = get_email_content(
+                    script_content, is_auto=True
+                )
+
+                success, message = send_email_pro(
+                    SMTP_HOST,
+                    SMTP_PORT,
+                    SMTP_SENDER,
+                    SMTP_PASSWORD,
+                    receiver_email,
+                    auto_subject,
+                    auto_email_body,
+                    audio_file_bytes,
+                    pdf_bytes,
+                )
+
+                if success:
+                    st.session_state["auto_email_sent"] = True
+                    st.write(
+                        f"🎉 **ENVOI AUTOMATIQUE RÉUSSI** à {receiver_email}. Message: {message}"
+                    )
+                    status_label = "✅ Analyse terminée et E-mail automatique envoyé !"
+                else:
+                    st.write(
+                        f"❌ **ÉCHEC DE L'ENVOI AUTOMATIQUE** à {receiver_email}. Message: {message} (Veuillez vérifier les logs SMTP ou renvoyer manuellement)."
+                    )
+                    status_label = "⚠️ Analyse terminée. Échec de l'envoi automatique."
+            else:
+                status_label = (
+                    "✅ Analyse stratégique terminée et résultats sauvegardés !"
+                )
+            # --- FIN ENVOI AUTOMATIQUE ---
 
             status.update(
-                label="✅ Analyse stratégique terminée et résultats sauvegardés !",
+                label=status_label,
                 state="complete",
                 expanded=False,
             )
@@ -872,7 +941,7 @@ if (
             os.remove(decrypted_pdf_path)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (COMPLÉTÉ POUR VUE GALERIE) ===
+# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if st.session_state["analyse_completee"]:
@@ -901,9 +970,8 @@ if st.session_state["analyse_completee"]:
     st.markdown("---")
 
     # ---------------------------------------------------------------------
-    # --- VUE EN ONGLET (TABLEAUX, GALERIE, EXPORT) ---
+    # --- VUE EN ONGLET (GALERIE, EXPORT, TABLEAU) ---
     # ---------------------------------------------------------------------
-    # Changement de "Vue Cartes" à "Vue Galerie" selon la demande de l'utilisateur
     tab_galerie, tab_script_export, tab_table = st.tabs(
         ["✨ Vue Galerie (Détail)", "🎙️ Script Vocal & Export", "📋 Vue Tableau"]
     )
@@ -913,31 +981,24 @@ if st.session_state["analyse_completee"]:
 
         # --- LOGIQUE DE GALERIE ---
         if all_opportunities:
-            cols_per_row = 3  # Choix de 3 colonnes pour une vue galerie
-
-            # Utilise un itérateur pour distribuer les opportunités dans les colonnes
+            cols_per_row = 3
             opportunity_iter = iter(all_opportunities)
 
-            # Boucle pour créer les lignes de la galerie
             while True:
-                # Crée les colonnes pour la ligne actuelle
                 current_cols = st.columns(cols_per_row)
                 opportunities_in_row = []
 
-                # Tente de récupérer les opportunités pour cette ligne
                 for _ in range(cols_per_row):
                     try:
                         opportunities_in_row.append(next(opportunity_iter))
                     except StopIteration:
-                        break  # Sort de la boucle si toutes les opportunités ont été traitées
+                        break
 
                 if not opportunities_in_row:
-                    break  # Sort de la boucle While si l'itérateur est vide
+                    break
 
-                # Affiche les opportunités dans les colonnes créées
                 for i, opp in enumerate(opportunities_in_row):
                     with current_cols[i]:
-                        # Utilise la fonction d'affichage de carte
                         display_opportunity_card(opp)
         else:
             st.warning("Aucune opportunité n'a été trouvée pour analyse.")
@@ -963,6 +1024,16 @@ if st.session_state["analyse_completee"]:
 
     with tab_script_export:
         st.markdown("### 🎙️ Briefing Vocal et Export")
+
+        if st.session_state["auto_email_sent"]:
+            st.success(
+                "✅ **L'envoi automatique de l'email a été effectué avec succès.** Utilisez le bouton ci-dessous pour un renvoi."
+            )
+        else:
+            st.warning(
+                "⚠️ L'envoi automatique a échoué ou n'a pas été tenté. Veuillez utiliser le bouton ci-dessous."
+            )
+
         st.info(
             "Ce briefing vocal a été rédigé par Gemini 2.5 pour une présentation directe à M. le Directeur, et optimisé pour la synthèse vocale."
         )
@@ -1007,9 +1078,7 @@ if st.session_state["analyse_completee"]:
                 )
 
         with col_dl_d:
-            df = pd.DataFrame(
-                all_opportunities
-            )  # Assurez-vous que df est défini ici aussi pour l'export CSV
+            df = pd.DataFrame(all_opportunities)
             st.download_button(
                 label="⬇️ Télécharger le Tableau CSV",
                 data=df.to_csv().encode("utf-8"),
@@ -1019,50 +1088,32 @@ if st.session_state["analyse_completee"]:
             )
 
         # ---------------------------------------------------------------------
-        # --- ENVOI PAR EMAIL ---
+        # --- ENVOI PAR EMAIL (RENVOI MANUEL) ---
         # ---------------------------------------------------------------------
-        st.markdown("### 📧 Envoi Automatique du Briefing au DG")
-
-        email_body = f"""
-Bonjour Monsieur le Directeur,
-
-Veuillez trouver ci-joint les documents de veille stratégique analysés par NovaReader :
-
-1. Fichier Audio (briefing_audio.mp3) : Un résumé vocal concis des opportunités clés du jour.
-2. Rapport Détaillé (rapport_strategique_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf) : Le rapport complet avec l'analyse stratégique 'Bénéfice Directeur' et 'Mise en Œuvre' pour chaque opportunité.
-
-Vous trouverez également le script complet du briefing ci-dessous :
----
-{script_content}
----
-
-Cordialement,
-
-Votre Assistant IA
-Novatech - Veille Stratégique
-"""
+        st.markdown("### 📧 Renvoi Manuel du Briefing au DG")
 
         send_email_btn = st.button(
-            "🚀 Envoyer le Briefing (Audio + PDF) par Email",
-            key="send_email_button",
+            "🚀 Renvoyer le Briefing (Audio + PDF) par Email",
+            key="send_email_button_manual",
             use_container_width=True,
             disabled=not (audio_file_bytes and pdf_bytes),
         )
 
         if send_email_btn:
-            subject = f"Veille Stratégique NOVATECH - Journal du {pd.Timestamp.now().strftime('%d/%m/%Y')} (via NovaReader)"
+            subject, email_body = get_email_content(script_content, is_auto=False)
 
-            success, message = send_email_pro(
-                SMTP_HOST,
-                SMTP_PORT,
-                SMTP_SENDER,
-                SMTP_PASSWORD,
-                st.session_state["receiver_email"],
-                subject,
-                email_body,
-                audio_file_bytes,
-                pdf_bytes,
-            )
+            with st.spinner("Envoi de l'email en cours..."):
+                success, message = send_email_pro(
+                    SMTP_HOST,
+                    SMTP_PORT,
+                    SMTP_SENDER,
+                    SMTP_PASSWORD,
+                    st.session_state["receiver_email"],
+                    subject,
+                    email_body,
+                    audio_file_bytes,
+                    pdf_bytes,
+                )
 
             if success:
                 st.success(message)
