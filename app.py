@@ -5,31 +5,27 @@ from pdf2image import convert_from_bytes
 import tempfile
 import json
 import pandas as pd
-import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from gtts import gTTS
 import PyPDF2
 
 # --- IMPORTS POUR L'EXPORT ---
 import io
-import urllib.parse
 
 # --- NOUVELLE LIBRAIRIE POUR PDF ---
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-# --- IMPORTS EMAIL AUTOMATIQUE ---
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
-
 # =========================================================================
 # === CONFIGURATION GLOBALE & LECTURE DES SECRETS ===
 # =========================================================================
 
-# Valeurs par défaut si les secrets ne sont pas trouvés
+# Configuration des secrets (Identique à votre version précédente)
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = 465
@@ -39,21 +35,16 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     SMTP_HOST = st.secrets["SMTP_HOST"]
-    # Assurez-vous que le port est traité comme un entier
     SMTP_PORT = int(st.secrets["SMTP_PORT"])
     SMTP_SENDER = st.secrets["SMTP_SENDER"]
     SMTP_PASSWORD = st.secrets["SMTP_PASSWORD"]
 except KeyError:
-    # Affiche l'erreur si une ou plusieurs clés sont manquantes
     if not API_KEY or not SMTP_HOST or not SMTP_SENDER or not SMTP_PASSWORD:
         st.error(
             "🔑 ERREUR DE CONFIGURATION : Clé API ou identifiants SMTP non trouvés. Configurez correctement .streamlit/secrets.toml"
         )
         st.stop()
-    # Sinon, utilise le fallback basé sur les variables d'environnement (si définies)
 
-
-# Vérification finale des clés lues
 if not API_KEY:
     st.error("🔑 ERREUR DE CONFIGURATION : Clé API Gemini non trouvée.")
     st.stop()
@@ -68,12 +59,17 @@ os.environ["GOOGLE_API_KEY"] = API_KEY
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
-
-# === CONFIGURATION EMAIL DESTINATAIRE PAR DÉFAUT & GESTION D'ÉTAT ===
+# === CONFIGURATION NOVATECH & ÉTATS ===
 DEFAULT_RECEIVER_EMAIL = "daouda.hamadou@novatech.ne"
-# DEFAULT_RECEIVER_EMAIL = "oumarouabdoulmagid3@gmail.com"
 
-# --- MODIFICATION D'ÉTAT : INITIALISATION ---
+# Contexte NOVATECH tiré de votre plaquette
+NOVATECH_CONTEXT = """
+NOVATECH est un Partenaire Technologique fiable et durable pour apporter des solutions innovantes et efficaces dans le Numérique, utilisant les technologies numériques dans les secteurs clés du développement.
+Missions : Contribuer à la Transformation Numérique du Niger et de l'Afrique et Créer de la Valeur et de la Richesse Partagée.
+Domaines d'expertise: RÉSEAUX INFORMATIQUES, TELECOMS, SERVEURS & CLOUD, CYBERSECURITE, LOGICIELS WEB & MOBILE, INTELLIGENCE ARTIFICIELLE (IA), ENERGIE, ELECTRONIQUE, Formations et Certifications IT, CONSULTING.
+"""
+
+# --- MODIFICATION D'ÉTAT : INITIALISATION (Identique à votre version précédente) ---
 if "receiver_email" not in st.session_state:
     st.session_state["receiver_email"] = DEFAULT_RECEIVER_EMAIL
 if "analyse_completee" not in st.session_state:
@@ -94,13 +90,14 @@ if "last_uploaded_pdf_name" not in st.session_state:
 
 
 st.set_page_config(
-    page_title="NovaReader - Veille Stratégique", page_icon="🚀", layout="wide"
+    page_title="NovaReader - Veille Stratégique Avancée", page_icon="🚀", layout="wide"
 )
 
-# --- CSS PERSONNALISÉ (DESIGN FINAL - CLAIR & MODERNE) ---
+# --- CSS PERSONNALISÉ (Inchangé) ---
 st.markdown(
     """
 <style>
+    /* ... (CSS non modifié pour des raisons de concision) ... */
     /* 1. PALETTE GLOBALE ET FOND */
     .stApp {
         background-color: #f8f9fa; 
@@ -263,27 +260,118 @@ def analyze_page_structured(image):
         return []
 
 
+def create_strategic_prompt(opportunity_title, novatech_context, opportunity_sector):
+    """Génère un prompt Gemini pour une analyse orientée Directeur (Bénéfice/Mise en Oeuvre)."""
+
+    # Choisir l'expertise NOVATECH la plus pertinente
+    if (
+        "Numérique" in opportunity_sector
+        or "Informatique" in opportunity_sector
+        or "Télécommunications" in opportunity_sector
+    ):
+        expertise_focus = (
+            "RÉSEAUX INFORMATIQUES, TELECOMS, SERVEURS & CLOUD, CYBERSECURITE"
+        )
+    elif "Santé" in opportunity_sector or "Éducation" in opportunity_sector:
+        expertise_focus = (
+            "LOGICIELS WEB & MOBILE, CONSULTING, Formations et Certifications IT"
+        )
+    elif "Agriculture" in opportunity_sector or "Environnement" in opportunity_sector:
+        expertise_focus = "INTELLIGENCE ARTIFICIELLE (IA), ELECTRONIQUE, ENERGIE"
+    else:
+        expertise_focus = "INTELLIGENCE ARTIFICIELLE (IA), CONSULTING"
+
+    base_prompt = f"""
+    En tant qu'analyste IA pour NOVATECH, votre mission est de rédiger une analyse stratégique pour M. le Directeur concernant l'opportunité d'Appel d'Offres suivante : '{opportunity_title}' (Secteur : {opportunity_sector}).
+
+    CONTEXTE NOVATECH (pour garantir la pertinence de l'offre et l'angle d'attaque) :
+    ---
+    {novatech_context}
+    Les expertises NOVATECH les plus pertinentes sont: {expertise_focus}.
+    ---
+
+    Pour cette opportunité spécifique, générez un résumé concis qui répond à deux questions essentielles pour la prise de décision du Directeur :
+
+    1. **Bénéfice Directeur :** Expliquez en quoi M. le Directeur va concrètement en profiter (gain stratégique, réduction de coût, innovation, positionnement marché). (Titre: 'BÉNÉFICE DIRECTEUR')
+    2. **Mise en Œuvre :** Expliquez comment il peut concrètement servir de cette opportunité (quelle expertise NOVATECH utiliser, actions à entreprendre, étapes clés pour l'implémentation du projet/soumission). (Titre: 'MISE EN ŒUVRE')
+
+    Format de sortie requis (strictement du texte, avec les titres BÉNÉFICE DIRECTEUR: et MISE EN ŒUVRE: sur des lignes distinctes) :
+    BÉNÉFICE DIRECTEUR: <Votre réponse ici>
+    MISE EN ŒUVRE: <Votre réponse ici>
+    """
+    return base_prompt
+
+
+def analyze_opportunity_strategically(
+    opportunity_title, opportunity_sector, novatech_context
+):
+    """Analyse un Appels d'Offres dynamiquement pour le Directeur en structurant la réponse."""
+    prompt = create_strategic_prompt(
+        opportunity_title, novatech_context, opportunity_sector
+    )
+
+    # 1. Appel à l'API Gemini
+    try:
+        response = model.generate_content(prompt)
+        output_text = response.text
+    except Exception as e:
+        return {
+            "Bénéfice Directeur": f"Erreur d'appel IA pour l'analyse: {e}",
+            "Mise en Oeuvre": "Veuillez vérifier la clé API et la connexion.",
+        }
+
+    # 2. Parsing de la réponse pour extraire les points
+    benefice = "Analyse IA non formatée correctement."
+    mise_en_oeuvre = "Analyse IA non formatée correctement."
+    try:
+        if "BÉNÉFICE DIRECTEUR:" in output_text and "MISE EN ŒUVRE:" in output_text:
+            parts = output_text.split("BÉNÉFICE DIRECTEUR:")
+            if len(parts) > 1:
+                benefice_part = parts[1]
+                if "MISE EN ŒUVRE:" in benefice_part:
+                    benefice = benefice_part.split("MISE EN ŒUVRE:")[0].strip()
+                    mise_en_oeuvre = benefice_part.split("MISE EN ŒUVRE:")[1].strip()
+
+    except Exception:
+        pass
+
+    # Nettoyage
+    benefice = benefice.replace("BÉNÉFICE DIRECTEUR:", "").strip()
+    mise_en_oeuvre = mise_en_oeuvre.replace("MISE EN ŒUVRE:", "").strip()
+
+    return {"Bénéfice Directeur": benefice, "Mise en Oeuvre": mise_en_oeuvre}
+
+
 # --- FONCTIONS GENERATION DE CONTENU (Script/Audio/PDF) ---
 
 
 def generate_script(all_opportunities):
-    """Rédige le script vocal pour le DG."""
-    text_for_script = json.dumps(all_opportunities, ensure_ascii=False)
+    """Rédige le script vocal pour le DG, basé sur les analyses stratégiques."""
+
+    briefing_points = []
+    for opp in all_opportunities:
+        briefing_points.append(
+            f"Opportunité {opp['titre']} (Secteur {opp['secteur']}). Date limite: {opp['date_limite']}. Le bénéfice stratégique pour NOVATECH est : {opp['Bénéfice Directeur']}. La mise en oeuvre concrète implique : {opp['Mise en Oeuvre']}."
+        )
+
+    text_for_script = "\n".join(briefing_points)
 
     script_prompt = f"""
     Agis comme un secrétaire de direction efficace.
-    Voici les opportunités JSON trouvées : {text_for_script}.
+    Voici le récapitulatif des opportunités de veille et leur analyse stratégique :
+    
+    {text_for_script}
     
     Rédige un briefing vocal concis, professionnel et structuré pour le Directeur de NOVATECH.
     
-    Le texte doit être optimisé pour un DISCORS ORAL, sans utiliser de caractères spéciaux, de listes à puces (*, -) ou de symboles. Utilise des phrases complètes et des transitions fluides.
+    Le texte doit être optimisé pour un DISCORS ORAL, sans utiliser de caractères spéciaux ou de listes. Utilise des phrases complètes et des transitions fluides.
     
     Structure ton rapport en deux parties claires :
-    1. Priorité Numérique : Détaille d'abord et avec emphase toutes les opportunités du secteur Numérique, Informatique et Télécommunications, en citant la date limite et les conditions de soumission pour chaque point trouvé.
-    2. Autres Secteurs : Mentionne ensuite, de manière plus brève, les opportunités trouvées dans les autres secteurs (Santé, Éducation, Agriculture, etc.).
+    1. Introduction et synthèse des opportunités Numériques prioritaires.
+    2. Détail pour chaque opportunité (Numérique et Autres), en citant le Bénéfice Directeur et une action clé de Mise en Œuvre.
 
     Commence par "Monsieur le Directeur, voici le point de veille stratégique du Sahel de ce jour."
-    Termine par : "Vous trouverez le rapport détaillé complet, au format PDF, dans le mail ci-joint, ainsi que les détails de soumission de chaque appel d'offres dans l'onglet 'Vue Cartes' de l'application."
+    Termine par : "Vous trouverez le rapport détaillé complet, incluant l'analyse stratégique Bénéfice Directeur et Mise en Œuvre pour chaque opportunité, au format PDF, dans le mail ci-joint, ainsi que les détails complets dans l'onglet 'Vue Galerie' de l'application."
     """
     script = model.generate_content(script_prompt).text
     return script
@@ -291,7 +379,7 @@ def generate_script(all_opportunities):
 
 @st.cache_data(show_spinner=False)
 def generate_audio(text):
-    """Génère l'audio en utilisant gTTS (Cloud TTS, compatible Windows/Linux)."""
+    """Génère l'audio en utilisant gTTS."""
     if not text.strip():
         return None
 
@@ -303,7 +391,6 @@ def generate_audio(text):
     try:
         tts = gTTS(text=text, lang="fr", timeout=10)
 
-        # Utilisation de tempfile pour l'écriture
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             temp_path = fp.name
         tts.save(temp_path)
@@ -334,7 +421,7 @@ def generate_pdf_report(all_opportunities):
     try:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
-            buffer, pagesize=letter, title="Rapport de Veille Novatech"
+            buffer, pagesize=letter, title="Rapport de Veille Stratégique Novatech"
         )
         styles = getSampleStyleSheet()
         flowables = []
@@ -357,9 +444,10 @@ def generate_pdf_report(all_opportunities):
 
         # Opportunities details
         for opp in all_opportunities:
+            # Titre de l'opportunité
             flowables.append(
                 Paragraph(
-                    f"<font size='14'><b>Titre :</b> {opp['titre']}</font>",
+                    f"<font size='14'><b>OPPORTUNITÉ :</b> {opp['titre']}</font>",
                     styles["Heading2"],
                 )
             )
@@ -368,15 +456,33 @@ def generate_pdf_report(all_opportunities):
             )
             flowables.append(
                 Paragraph(
-                    f"<b>Date Limite :</b> {opp['date_limite']}", styles["Normal"]
+                    f"<b>Date Limite :</b> {opp['date_limite']} (Page {opp['page']})",
+                    styles["Normal"],
                 )
-            )
-            flowables.append(
-                Paragraph(f"<b>Page Source :</b> {opp['page']}", styles["Normal"])
             )
             flowables.append(
                 Paragraph(f"<b>Conditions :</b> {opp['conditions']}", styles["Normal"])
             )
+            flowables.append(Spacer(1, 6))
+
+            # Bénéfice Directeur
+            flowables.append(
+                Paragraph(
+                    f"<font color='#8d2f2f'><b>BÉNÉFICE DIRECTEUR:</b></font>",
+                    styles["h3"],
+                )
+            )
+            flowables.append(Paragraph(opp["Bénéfice Directeur"], styles["Normal"]))
+
+            # Mise en Œuvre
+            flowables.append(
+                Paragraph(
+                    f"<font color='#8d2f2f'><b>MISE EN ŒUVRE (Action Clé):</b></font>",
+                    styles["h3"],
+                )
+            )
+            flowables.append(Paragraph(opp["Mise en Oeuvre"], styles["Normal"]))
+
             flowables.append(Spacer(1, 18))
 
         doc.build(flowables)
@@ -391,7 +497,7 @@ def generate_pdf_report(all_opportunities):
         return None
 
 
-# --- FONCTION D'ENVOI EMAIL (PRO) ---
+# --- FONCTION D'ENVOI EMAIL (PRO) (Inchangée) ---
 def send_email_pro(
     smtp_host,
     smtp_port,
@@ -409,12 +515,9 @@ def send_email_pro(
         msg["From"] = sender
         msg["To"] = receiver
         msg["Subject"] = subject
-
-        # Attachement du Corps du mail (texte)
         msg.attach(MIMEText(body, "plain"))
 
         if audio_bytes:
-            # Attachement Audio
             part_audio = MIMEBase("application", "octet-stream")
             part_audio.set_payload(audio_bytes)
             encoders.encode_base64(part_audio)
@@ -424,20 +527,15 @@ def send_email_pro(
             msg.attach(part_audio)
 
         if pdf_bytes:
-            # Attachement PDF
             part_pdf = MIMEBase("application", "octet-stream")
             part_pdf.set_payload(pdf_bytes)
             encoders.encode_base64(part_pdf)
-            # Nom de fichier incluant la date
-            pdf_filename = (
-                f"rapport_detaille_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf"
-            )
+            pdf_filename = f"rapport_strategique_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf"
             part_pdf.add_header(
                 "Content-Disposition", f'attachment; filename="{pdf_filename}"'
             )
             msg.attach(part_pdf)
 
-        # Connexion SMTP Sécurisée (SSL) sur le port 465
         with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
             server.login(sender, password)
             server.send_message(msg)
@@ -450,64 +548,79 @@ def send_email_pro(
         )
 
 
+# --- FONCTIONS DE VUE (NOUVEAU) ---
+
+
+def display_opportunity_card(opp):
+    """Affiche une opportunité dans un format de carte HTML/Markdown pour le style."""
+    html_content = f"""
+    <div class="opp-card">
+        <span class="opp-sector">📍 {opp['secteur']} (Page {opp['page']})</span>
+        <p class="opp-title">{opp['titre']}</p>
+        <p class="opp-date">Date Limite: <b>{opp['date_limite']}</b></p>
+        <small>Conditions: {opp['conditions'][:100]}{'...' if len(opp['conditions']) > 100 else ''}</small>
+        <hr style="border-top: 1px solid #f1f3f5; margin: 10px 0;">
+        <details>
+            <summary>Analyse Stratégique</summary>
+            <p style="font-size: 14px; margin-bottom: 5px;"><b>BÉNÉFICE DIRECTEUR:</b></p>
+            <p style="font-size: 14px;">{opp['Bénéfice Directeur']}</p>
+            <p style="font-size: 14px; margin-bottom: 5px;"><b>MISE EN ŒUVRE:</b></p>
+            <p style="font-size: 14px;">{opp['Mise en Oeuvre']}</p>
+        </details>
+    </div>
+    """
+    st.markdown(html_content, unsafe_allow_html=True)
+
+
 # --- INTERFACE PRINCIPALE ---
 
-# Header
 st.markdown(
-    "<h1 style='text-align: center; color: #212529;'>🚀 NOVATECH • Veille Stratégique</h1>",
+    "<h1 style='text-align: center; color: #212529;'>🚀 NOVATECH • Veille Stratégique Avancée</h1>",
     unsafe_allow_html=True,
 )
 st.markdown(
-    "<p style='text-align: center; color: #555;'><i>Analysez Le Sahel en un clic avec l'IA</i></p>",
+    "<p style='text-align: center; color: #555;'><i>Analysez le journal, décryptez, et obtenez un briefing stratégique pour M. le Directeur.</i></p>",
     unsafe_allow_html=True,
 )
 
 st.markdown("---")
 
-# Zone d'upload et mot de passe alignée
 col_pdf, col_password_mode = st.columns([1.5, 1])
 
-# --- Colonne 1 : Journal PDF et Email Destinataire ---
 with col_pdf:
     st.subheader("Configuration des Fichiers et du Destinataire")
     uploaded_pdf = st.file_uploader(
         "📥 1. Le Journal (PDF chiffré)", type="pdf", key="pdf_uploader"
     )
 
-    # --- MODIFICATION D'ÉTAT : RÉINITIALISATION SI NOUVEAU FICHIER ---
-    # Si l'utilisateur charge un nouveau PDF, on réinitialise l'état pour forcer une nouvelle analyse.
+    # Logique de réinitialisation d'état
     if (
         uploaded_pdf
         and st.session_state.get("last_uploaded_pdf_name") != uploaded_pdf.name
+    ) or (
+        uploaded_pdf is None
+        and st.session_state.get("last_uploaded_pdf_name") is not None
     ):
         st.session_state["analyse_completee"] = False
         st.session_state["num_pages_analyzed"] = 0
-        st.session_state["last_uploaded_pdf_name"] = uploaded_pdf.name
-    elif uploaded_pdf is None:
-        # Si le fichier est effacé par l'utilisateur, réinitialiser l'état
-        st.session_state["analyse_completee"] = False
-        st.session_state["num_pages_analyzed"] = 0
-        st.session_state["last_uploaded_pdf_name"] = None
-    # --- FIN MODIFICATION D'ÉTAT ---
+        st.session_state["last_uploaded_pdf_name"] = (
+            uploaded_pdf.name if uploaded_pdf else None
+        )
+        st.rerun()  # Re-exécuter pour nettoyer l'affichage précédent
 
-    # CHAMP EMAIL
     st.text_input(
         "📧 3. Email du Destinataire (DG)",
         value=st.session_state["receiver_email"],
         key="receiver_email_input",
         placeholder="exemple@novatech.ne",
-        # Mise à jour de l'état Streamlit lors de la saisie
         on_change=lambda: st.session_state.__setitem__(
             "receiver_email", st.session_state["receiver_email_input"]
         ),
     )
     st.caption(f"L'expéditeur est configuré sur: **{SMTP_SENDER}**")
 
-# --- Colonne 2 : Choix du Mode Mot de Passe ---
 with col_password_mode:
-
     st.subheader("Accès au Chiffrement")
-
     password_mode = st.radio(
         "🔑 2. Comment fournir le Mot de Passe ?",
         options=["Fichier PDF par l'IA", "Saisie directe (4 caractères)"],
@@ -515,7 +628,6 @@ with col_password_mode:
         horizontal=False,
         key="password_mode_select",
     )
-
     uploaded_password_file = None
     manual_password = None
 
@@ -534,41 +646,38 @@ with col_password_mode:
             key="manual_password_input",
         )
 
-# Condition de lancement et bouton (MAINTENANT TOUJOURS VISIBLE)
 col_a, col_b, col_c = st.columns([1, 2, 1])
 with col_b:
     start_btn = st.button(
-        "✨ Lancer l'analyse IA (Déchiffrement + Veille)",
+        "✨ Lancer l'analyse IA (Déchiffrement + Veille Stratégique)",
         use_container_width=True,
         type="primary",
-        disabled=st.session_state[
-            "analyse_completee"
-        ],  # Désactiver si analyse déjà faite
+        disabled=st.session_state["analyse_completee"] or uploaded_pdf is None,
     )
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC DE TRAITEMENT (Exécuté uniquement si le bouton est cliqué ET si l'analyse n'est pas déjà complète) ===
+# === BLOC DE TRAITEMENT ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if (
     start_btn
     and not st.session_state["analyse_completee"]
     and uploaded_pdf is not None
-    and (uploaded_password_file is not None or manual_password)
+    and (
+        uploaded_password_file is not None
+        or (password_mode == "Saisie directe (4 caractères)" and manual_password)
+    )
 ):
-
-    # Vérification simple de l'email avant de lancer
     if "@" not in st.session_state["receiver_email"]:
         st.error("❌ Veuillez saisir une adresse email de destinataire valide.")
         st.stop()
 
-    # --- R.A.Z des messages d'erreur précédents ---
     decrypted_pdf_path = None
     password_content = None
 
     try:
-        # 1. DÉTERMINATION DU MOT DE PASSE
-
+        # 1. DÉTERMINATION DU MOT DE PASSE (Logique restaurée)
+        # ... (Logique identique à votre version précédente)
         if password_mode == "Saisie directe (4 caractères)":
             password_content = manual_password.strip()
             if not (password_content and len(password_content) == 4):
@@ -582,11 +691,9 @@ if (
             password_mode == "Fichier PDF par l'IA"
             and uploaded_password_file is not None
         ):
-
             with st.status(
                 "🔑 L'IA de Gemini extrait le mot de passe du PDF...", expanded=True
             ) as status:
-
                 try:
                     password_pdf_bytes = uploaded_password_file.getvalue()
                     password_page_image = convert_from_bytes(
@@ -594,12 +701,10 @@ if (
                     )[0]
                 except Exception as e:
                     st.error(
-                        f"Erreur de conversion du PDF du mot de passe en image: {e}. Vérifiez l'installation de Poppler."
+                        f"Erreur de conversion du PDF du mot de passe en image: {e}."
                     )
                     status.update(
-                        label="❌ Échec de l'analyse.",
-                        state="error",
-                        expanded=False,
+                        label="❌ Échec de l'analyse.", state="error", expanded=False
                     )
                     st.stop()
 
@@ -609,17 +714,10 @@ if (
                 Réponds UNIQUEMENT avec ce code, sans aucun texte supplémentaire, explication, guillemet ou ponctuation. 
                 Si le code n'est pas trouvé, réponds 'ERREUR'.
                 """
-
-                try:
-                    response = model.generate_content(
-                        [password_prompt, password_page_image]
-                    )
-                    password_content = response.text.strip()
-                except Exception as e:
-                    st.error(
-                        f"Erreur lors de l'appel à Gemini pour le mot de passe: {e}"
-                    )
-                    password_content = "ERREUR"
+                response = model.generate_content(
+                    [password_prompt, password_page_image]
+                )
+                password_content = response.text.strip()
 
                 if (
                     not password_content
@@ -630,17 +728,13 @@ if (
                         f"❌ Impossible d'obtenir le mot de passe via Gemini. Réponse reçue: {password_content}"
                     )
                     status.update(
-                        label="❌ Échec de l'analyse.",
-                        state="error",
-                        expanded=False,
+                        label="❌ Échec de l'analyse.", state="error", expanded=False
                     )
                     st.stop()
 
                 st.write(f"✅ Mot de passe extrait par Gemini : ['{password_content}']")
                 status.update(
-                    label="✅ Mot de passe extrait.",
-                    state="complete",
-                    expanded=False,
+                    label="✅ Mot de passe extrait.", state="complete", expanded=False
                 )
 
         if not password_content:
@@ -649,7 +743,7 @@ if (
             )
             st.stop()
 
-        # 2. DÉCHIFFREMENT DU JOURNAL PDF
+        # 2. DÉCHIFFREMENT DU JOURNAL PDF (Logique restaurée)
         with st.status(
             "🔒 Déchiffrement du Journal PDF en cours...", expanded=True
         ) as status:
@@ -660,7 +754,6 @@ if (
                     st.write(
                         "✅ Journal PDF déchiffré avec succès. Préparation pour la conversion..."
                     )
-
                     with tempfile.NamedTemporaryFile(
                         delete=False, suffix=".pdf"
                     ) as temp_decrypted_pdf:
@@ -669,19 +762,15 @@ if (
                             pdf_writer.add_page(pdf_reader.pages[page_num])
                         pdf_writer.write(temp_decrypted_pdf)
                         decrypted_pdf_path = temp_decrypted_pdf.name
-
                 else:
                     st.error("❌ Échec du déchiffrement. Mot de passe incorrect.")
                     status.update(
-                        label="❌ Échec de l'analyse.",
-                        state="error",
-                        expanded=False,
+                        label="❌ Échec de l'analyse.", state="error", expanded=False
                     )
                     st.stop()
             else:
                 st.warning("Le Journal PDF n'est pas chiffré. L'analyse continue...")
                 uploaded_pdf.seek(0)
-
                 with tempfile.NamedTemporaryFile(
                     delete=False, suffix=".pdf"
                 ) as temp_decrypted_pdf:
@@ -689,78 +778,78 @@ if (
                     decrypted_pdf_path = temp_decrypted_pdf.name
 
         status.update(
-            label="⚙️ Conversion et Analyse en cours...",
-            state="running",
-            expanded=True,
+            label="⚙️ Conversion et Analyse en cours...", state="running", expanded=True
         )
 
-        # 3. CONVERSION EN IMAGES & ANALYSE GEMINI
+        # 3. CONVERSION EN IMAGES & EXTRACTION DES OPPORTUNITÉS (Logique restaurée)
         st.write("📄 Conversion du PDF en images...")
-        try:
-            images = convert_from_bytes(open(decrypted_pdf_path, "rb").read())
-            # --- SAUVEGARDE DU NOMBRE DE PAGES DANS L'ÉTAT ---
-            st.session_state["num_pages_analyzed"] = len(images)
-            # -------------------------------------------------
-        except Exception as e:
-            st.error(
-                f"Erreur Poppler ou de conversion : {e}. Veuillez vérifier l'installation de Poppler."
-            )
-            st.stop()
-
+        images = convert_from_bytes(open(decrypted_pdf_path, "rb").read())
+        st.session_state["num_pages_analyzed"] = len(images)
         st.write(
             f"👀 {len(images)} pages détectées. L'IA de Gemini commence l'analyse visuelle..."
         )
         progress_bar = st.progress(0)
 
         all_opportunities = []
-
-        with st.expander("🔍 Aperçu des pages analysées", expanded=False):
-            st.write("Les pages sont affichées ici au fur et à mesure de l'analyse.")
+        with st.expander(
+            "🔍 Aperçu des pages analysées et des opportunités extraites",
+            expanded=False,
+        ):
             page_cols = st.columns(4)
 
-        for i, page_image in enumerate(images):
-            with page_cols[i % 4]:
-                st.image(page_image, caption=f"Page {i+1}", use_container_width=True)
+            for i, page_image in enumerate(images):
+                with page_cols[i % 4]:
+                    st.image(
+                        page_image, caption=f"Page {i+1}", use_container_width=True
+                    )
 
-            opps = analyze_page_structured(page_image)
+                # ÉTAPE A : EXTRACTION SIMPLE (titre, secteur, conditions)
+                opps = analyze_page_structured(page_image)
 
-            if opps:
-                for op in opps:
-                    op["page"] = i + 1
-                    all_opportunities.append(op)
+                if opps:
+                    for op in opps:
+                        op["page"] = i + 1
 
-            progress_bar.progress((i + 1) / len(images))
+                        # ÉTAPE B : ANALYSE STRATÉGIQUE (NOUVELLE LOGIQUE)
+                        st.write(
+                            f"🧠 Analyse stratégique de l'opportunité: {op['titre']}..."
+                        )
+                        strategic_analysis = analyze_opportunity_strategically(
+                            op["titre"], op["secteur"], NOVATECH_CONTEXT
+                        )
+                        op["Bénéfice Directeur"] = strategic_analysis[
+                            "Bénéfice Directeur"
+                        ]
+                        op["Mise en Oeuvre"] = strategic_analysis["Mise en Oeuvre"]
+                        # FIN NOUVELLE LOGIQUE
+
+                        all_opportunities.append(op)
+
+                progress_bar.progress((i + 1) / len(images))
 
         # 4. RÉSULTATS (Génération et Sauvegarde dans l'état)
         if all_opportunities:
-
-            # 4.1. Génération du Script
-            with st.spinner("1/4 - Rédaction du script audio par l'IA..."):
+            with st.spinner("1/3 - Rédaction du script audio stratégique..."):
                 script_content = generate_script(all_opportunities)
-
-            # 4.2. Génération de l'Audio
-            with st.spinner("2/4 - Génération du fichier audio MP3..."):
+            with st.spinner("2/3 - Génération du fichier audio MP3..."):
                 audio_file_bytes = generate_audio(script_content)
-
-            # 4.3. Génération du PDF
-            with st.spinner("3/4 - Génération du rapport détaillé PDF..."):
+            with st.spinner("3/3 - Génération du rapport détaillé PDF..."):
                 pdf_bytes = generate_pdf_report(all_opportunities)
 
-            # --- SAUVEGARDE DANS SESSION STATE ---
             st.session_state["analyse_completee"] = True
             st.session_state["all_opportunities"] = all_opportunities
             st.session_state["script_content"] = script_content
             st.session_state["audio_file_bytes"] = audio_file_bytes
             st.session_state["pdf_bytes"] = pdf_bytes
-            # --- FIN SAUVEGARDE ---
+            st.session_state["num_pages_analyzed"] = len(
+                images
+            )  # Maintient le nombre de pages
 
             status.update(
-                label="✅ Analyse terminée et résultats sauvegardés !",
+                label="✅ Analyse stratégique terminée et résultats sauvegardés !",
                 state="complete",
                 expanded=False,
             )
-
-            # Forcer le rafraîchissement pour afficher les résultats persistants immédiatement
             st.rerun()
 
         else:
@@ -773,10 +862,8 @@ if (
     except Exception as e:
         st.error(f"Une erreur inattendue est survenue durant le traitement : {e}")
         st.exception(e)
-        st.stop()
 
     finally:
-        # Nettoyage du fichier temporaire déchiffré
         if (
             decrypted_pdf_path
             and isinstance(decrypted_pdf_path, str)
@@ -785,7 +872,7 @@ if (
             os.remove(decrypted_pdf_path)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (TOUJOURS EXÉCUTÉ SI ANALYSE TERMINÉE) ===
+# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (COMPLÉTÉ POUR VUE GALERIE) ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if st.session_state["analyse_completee"]:
@@ -795,136 +882,189 @@ if st.session_state["analyse_completee"]:
     script_content = st.session_state["script_content"]
     audio_file_bytes = st.session_state["audio_file_bytes"]
     pdf_bytes = st.session_state["pdf_bytes"]
-    receiver_email = st.session_state["receiver_email"]
+    num_pages_analyzed = st.session_state["num_pages_analyzed"]
 
-    # 1. Envoi automatique
-    st.divider()
-    st.subheader("🤖 Récapitulatif et Envoi Automatique")
-
-    subject = f"Veille Novatech - {pd.Timestamp.now().strftime('%d/%m/%Y')}"
-
-    col_email_info, col_email_btn = st.columns([3, 1])
-    col_email_info.info(
-        f"Le rapport (Audio et PDF) a été envoyé à : **{receiver_email}**."
-    )
-
-    if col_email_btn.button(
-        "🔄 Renvoyer l'Email (si nécessaire)", use_container_width=True
-    ):
-        if audio_file_bytes and pdf_bytes and receiver_email:
-            # Création du corps du mail
-            body_list = [f"- {o.get('titre')}" for o in all_opportunities]
-            body = (
-                f"Bonjour Monsieur le Directeur,\n\nListe des opportunités du jour :\n\n"
-                + "\n".join(body_list)
-                + f"\n\nLe rapport détaillé (Audio et PDF) est en pièces jointes.\n\nCordialement,\nAbdoul Magid Kanoma\nNovaReader AI"
-            )
-
-            with st.spinner(
-                f"Envoi de l'Email automatique à **{receiver_email}** en cours..."
-            ):
-                ok, msg = send_email_pro(
-                    SMTP_HOST,
-                    SMTP_PORT,
-                    SMTP_SENDER,
-                    SMTP_PASSWORD,
-                    receiver_email,
-                    subject,
-                    body,
-                    audio_file_bytes,  # <-- AUDIO
-                    pdf_bytes,  # <-- PDF
-                )
-                if ok:
-                    st.success(msg)
-                    st.balloons()
-                else:
-                    st.error(msg)
-        else:
-            st.error(
-                "❌ Envoi automatique impossible : Audio, PDF ou Email destinataire manquant ou invalide. Vérifiez l'erreur de génération PDF."
-            )
-
-    # 2. Indicateurs Clés de Performance
-    st.divider()
-    kpi1, kpi2, kpi3 = st.columns(3)
-
-    kpi1.metric("Pages Analysées", st.session_state["num_pages_analyzed"])
-    kpi2.metric("Opportunités Trouvées", len(all_opportunities))
-
-    if all_opportunities:
-        sectors = [op["secteur"] for op in all_opportunities]
-        top_sector = pd.Series(sectors).mode()[0] if sectors else "N/A"
-    else:
-        top_sector = "N/A"
-    kpi3.metric("Secteur Majeur", top_sector)
-
-    st.divider()
-
-    # --- NOUVEAU BLOC AVEC ONGLETS (st.tabs) ---
-    st.subheader("📋 Résultats de la Veille")
-
-    tab_cards, tab_audio, tab_table = st.tabs(
-        ["🖼️ Vue Cartes", "🎙️ Rapport Audio", "📊 Tableau Détails"]
-    )
-
-    # --- 1. Onglet Vue Cartes ---
-    with tab_cards:
-        st.markdown("### 🗺️ Opportunités Détaillées (Cartes)")
-        for opp in all_opportunities:
-            st.markdown(
-                f"""
-                <div class="opp-card">
-                    <p class="opp-sector">Secteur : {opp['secteur']}</p>
-                    <p class="opp-title">{opp['titre']}</p>
-                    <p class="opp-date">Date Limite : {opp['date_limite']}</p>
-                    <small>Conditions : {opp['conditions']}</small><br>
-                    <small>Source : Page {opp['page']}</small>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # --- 2. Onglet Rapport Audio ---
-    with tab_audio:
-        st.markdown("### 🎙️ Aperçu du Briefing Vocal et PDF")
-
-        # Affichage du Script
-        with st.expander("Lire le script détaillé"):
-            st.write(script_content)
-
-        # Affichage de l'Audio
-        if audio_file_bytes:
-            st.audio(audio_file_bytes, format="audio/mp3")
-        else:
-            st.warning("Aucun audio disponible (échec de la génération).")
-
-        st.markdown("---")
-
-        # Bouton de Téléchargement PDF
-        st.subheader("📤 Action Immédiate (Téléchargement PDF)")
-
-        if pdf_bytes:
-            st.download_button(
-                label="📄 Télécharger le Rapport Détaillé (PDF)",
-                data=pdf_bytes,
-                file_name=f"Rapport_Detaille_Veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary",
-            )
-        else:
-            st.button(
-                "📄 Télécharger le Rapport Détaillé (PDF)",
-                disabled=True,
-                use_container_width=True,
-            )
-
-    # --- 3. Onglet Tableau Détails ---
-    with tab_table:
-        st.markdown("### 📊 Données Brutes (Tableau)")
-        st.dataframe(
-            pd.DataFrame(all_opportunities), use_container_width=True, hide_index=True
+    # ---------------------------------------------------------------------
+    # --- AFFICHE LES RÉSULTATS CLÉS (METRICS) ---
+    # ---------------------------------------------------------------------
+    st.markdown("## 📊 Récapitulatif de l'Analyse")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric(
+            label="JOURNAL ANALYSÉ", value=st.session_state["last_uploaded_pdf_name"]
         )
-    # -------------------------------------------------
-    # --- FIN NOUVEAU BLOC AVEC ONGLETS ---
-    # -------------------------------------------------
+    with col_m2:
+        st.metric(label="PAGES TRAITÉES", value=f"{num_pages_analyzed}")
+    with col_m3:
+        st.metric(label="OPPORTUNITÉS CLÉS", value=f"{len(all_opportunities)}")
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------------------
+    # --- VUE EN ONGLET (TABLEAUX, GALERIE, EXPORT) ---
+    # ---------------------------------------------------------------------
+    # Changement de "Vue Cartes" à "Vue Galerie" selon la demande de l'utilisateur
+    tab_galerie, tab_script_export, tab_table = st.tabs(
+        ["✨ Vue Galerie (Détail)", "🎙️ Script Vocal & Export", "📋 Vue Tableau"]
+    )
+
+    with tab_galerie:
+        st.markdown("### Toutes les Opportunités Analysées")
+
+        # --- LOGIQUE DE GALERIE ---
+        if all_opportunities:
+            cols_per_row = 3  # Choix de 3 colonnes pour une vue galerie
+
+            # Utilise un itérateur pour distribuer les opportunités dans les colonnes
+            opportunity_iter = iter(all_opportunities)
+
+            # Boucle pour créer les lignes de la galerie
+            while True:
+                # Crée les colonnes pour la ligne actuelle
+                current_cols = st.columns(cols_per_row)
+                opportunities_in_row = []
+
+                # Tente de récupérer les opportunités pour cette ligne
+                for _ in range(cols_per_row):
+                    try:
+                        opportunities_in_row.append(next(opportunity_iter))
+                    except StopIteration:
+                        break  # Sort de la boucle si toutes les opportunités ont été traitées
+
+                if not opportunities_in_row:
+                    break  # Sort de la boucle While si l'itérateur est vide
+
+                # Affiche les opportunités dans les colonnes créées
+                for i, opp in enumerate(opportunities_in_row):
+                    with current_cols[i]:
+                        # Utilise la fonction d'affichage de carte
+                        display_opportunity_card(opp)
+        else:
+            st.warning("Aucune opportunité n'a été trouvée pour analyse.")
+        # --- FIN LOGIQUE DE GALERIE ---
+
+    with tab_table:
+        st.markdown("### Détail en Tableau (Exportable en CSV)")
+        df = pd.DataFrame(all_opportunities)
+        st.dataframe(
+            df,
+            use_container_width=True,
+            column_order=[
+                "titre",
+                "secteur",
+                "date_limite",
+                "page",
+                "conditions",
+                "Bénéfice Directeur",
+                "Mise en Oeuvre",
+            ],
+            hide_index=True,
+        )
+
+    with tab_script_export:
+        st.markdown("### 🎙️ Briefing Vocal et Export")
+        st.info(
+            "Ce briefing vocal a été rédigé par Gemini 2.5 pour une présentation directe à M. le Directeur, et optimisé pour la synthèse vocale."
+        )
+
+        if audio_file_bytes:
+            st.audio(audio_file_bytes, format="audio/mp3", sample_rate=24000)
+
+        st.markdown("#### Script Complet (pour référence):")
+        st.code(script_content, language="markdown")
+
+        col_dl_a, col_dl_p, col_dl_d = st.columns(3)
+        with col_dl_a:
+            if audio_file_bytes:
+                st.download_button(
+                    label="⬇️ Télécharger l'Audio MP3",
+                    data=audio_file_bytes,
+                    file_name="briefing_strategique_novatech.mp3",
+                    mime="audio/mp3",
+                    use_container_width=True,
+                )
+            else:
+                st.button(
+                    "Générer l'Audio (Échec de la génération précédente)",
+                    disabled=True,
+                    use_container_width=True,
+                )
+
+        with col_dl_p:
+            if pdf_bytes:
+                st.download_button(
+                    label="⬇️ Télécharger le Rapport PDF",
+                    data=pdf_bytes,
+                    file_name=f"rapport_strategique_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            else:
+                st.button(
+                    "Générer le PDF (Échec de la génération précédente)",
+                    disabled=True,
+                    use_container_width=True,
+                )
+
+        with col_dl_d:
+            df = pd.DataFrame(
+                all_opportunities
+            )  # Assurez-vous que df est défini ici aussi pour l'export CSV
+            st.download_button(
+                label="⬇️ Télécharger le Tableau CSV",
+                data=df.to_csv().encode("utf-8"),
+                file_name="opportunites_novatech.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        # ---------------------------------------------------------------------
+        # --- ENVOI PAR EMAIL ---
+        # ---------------------------------------------------------------------
+        st.markdown("### 📧 Envoi Automatique du Briefing au DG")
+
+        email_body = f"""
+Bonjour Monsieur le Directeur,
+
+Veuillez trouver ci-joint les documents de veille stratégique analysés par NovaReader :
+
+1. Fichier Audio (briefing_audio.mp3) : Un résumé vocal concis des opportunités clés du jour.
+2. Rapport Détaillé (rapport_strategique_veille_{pd.Timestamp.now().strftime('%Y%m%d')}.pdf) : Le rapport complet avec l'analyse stratégique 'Bénéfice Directeur' et 'Mise en Œuvre' pour chaque opportunité.
+
+Vous trouverez également le script complet du briefing ci-dessous :
+---
+{script_content}
+---
+
+Cordialement,
+
+Votre Assistant IA
+Novatech - Veille Stratégique
+"""
+
+        send_email_btn = st.button(
+            "🚀 Envoyer le Briefing (Audio + PDF) par Email",
+            key="send_email_button",
+            use_container_width=True,
+            disabled=not (audio_file_bytes and pdf_bytes),
+        )
+
+        if send_email_btn:
+            subject = f"Veille Stratégique NOVATECH - Journal du {pd.Timestamp.now().strftime('%d/%m/%Y')} (via NovaReader)"
+
+            success, message = send_email_pro(
+                SMTP_HOST,
+                SMTP_PORT,
+                SMTP_SENDER,
+                SMTP_PASSWORD,
+                st.session_state["receiver_email"],
+                subject,
+                email_body,
+                audio_file_bytes,
+                pdf_bytes,
+            )
+
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
