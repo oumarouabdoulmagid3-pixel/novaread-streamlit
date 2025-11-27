@@ -16,7 +16,7 @@ import io
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-import re  # Import de la librairie des expressions régulières
+import re
 
 # =========================================================================
 # === CONFIGURATION GLOBALE & LECTURE DES SECRETS (Inchangé) ===
@@ -449,7 +449,6 @@ def generate_script(all_opportunities):
 @st.cache_data(show_spinner=False)
 def generate_audio(text):
     """Génère l'audio en utilisant gTTS."""
-    # (Logique gTTS inchangée)
     if not text.strip():
         return None
 
@@ -459,7 +458,8 @@ def generate_audio(text):
     temp_path = None
 
     try:
-        tts = gTTS(text=text, lang="fr", timeout=10)
+        # On utilise une langue par défaut pour éviter les erreurs de détection
+        tts = gTTS(text=text, lang="fr", tld="fr", timeout=10)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             temp_path = fp.name
@@ -473,8 +473,9 @@ def generate_audio(text):
         return audio_bytes
 
     except Exception as e:
+        # On affiche l'erreur ici pour aider au debug
         st.error(
-            f"Erreur de Synthèse Vocale gTTS : {e}. Cause probable: Connexion instable ou bloquée."
+            f"❌ Erreur de Synthèse Vocale gTTS : {e}. Cause probable: Connexion instable ou bloquée."
         )
         return None
 
@@ -925,8 +926,18 @@ if (
                 script_content = generate_script(
                     all_opportunities
                 )  # Appelle la fonction nettoyée
+
+            # Réinitialisation de la cache pour forcer la génération audio
+            generate_audio.clear()
+
             with st.spinner("2/3 - Génération du fichier audio MP3..."):
-                audio_file_bytes = generate_audio(script_content)
+                # Si le script est vide, generate_audio retournera None.
+                # Cela empêche une erreur critique si l'API a coupé le script.
+                if script_content:
+                    audio_file_bytes = generate_audio(script_content)
+                else:
+                    audio_file_bytes = None
+
             with st.spinner("3/3 - Génération du rapport détaillé PDF..."):
                 pdf_bytes = generate_pdf_report(
                     all_opportunities
@@ -1009,7 +1020,7 @@ if (
             os.remove(decrypted_pdf_path)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (Inchangé) ===
+# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (AVEC CORRECTION AUDIO) ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if st.session_state["analyse_completee"]:
@@ -1067,7 +1078,6 @@ if st.session_state["analyse_completee"]:
     with tab_table:
         st.markdown("### Détail en Tableau (Exportable en CSV)")
         df = pd.DataFrame(all_opportunities)
-        # Nettoyage des colonnes pour un affichage propre dans le tableau (optionnel: enlever le HTML)
 
         # Fonction utilitaire pour nettoyer le HTML des colonnes du DataFrame (non formatées)
         def clean_html_for_df(text):
@@ -1117,6 +1127,7 @@ if st.session_state["analyse_completee"]:
             "Ce briefing vocal a été rédigé par Gemini 2.5 pour une présentation directe à M. le Directeur, et optimisé pour la synthèse vocale."
         )
 
+        # Affichage du lecteur audio s'il est présent
         if audio_file_bytes:
             st.audio(audio_file_bytes, format="audio/mp3", sample_rate=24000)
 
@@ -1124,6 +1135,8 @@ if st.session_state["analyse_completee"]:
         st.code(script_content, language="markdown")
 
         col_dl_a, col_dl_p, col_dl_d = st.columns(3)
+
+        # --- LOGIQUE DE GENERATION/TELECHARGEMENT AUDIO CORRIGÉE ---
         with col_dl_a:
             if audio_file_bytes:
                 st.download_button(
@@ -1133,11 +1146,22 @@ if st.session_state["analyse_completee"]:
                     mime="audio/mp3",
                     use_container_width=True,
                 )
+            elif script_content:
+                # Nouveau bouton pour relancer la génération audio si le script est là mais pas l'audio
+                if st.button(
+                    "🎙️ Générer l'Audio Manuellement",
+                    key="regenerate_audio_btn",
+                    use_container_width=True,
+                ):
+                    # Forcer la génération audio
+                    st.session_state["audio_file_bytes"] = generate_audio(
+                        script_content
+                    )
+                    # Forcer la relecture de la page pour afficher le lecteur audio
+                    st.rerun()
             else:
                 st.button(
-                    "Générer l'Audio (Échec de la génération précédente)",
-                    disabled=True,
-                    use_container_width=True,
+                    "Audio Non Disponible", disabled=True, use_container_width=True
                 )
 
         with col_dl_p:
@@ -1175,6 +1199,7 @@ if st.session_state["analyse_completee"]:
             "🚀 Renvoyer le Briefing (Audio + PDF) par Email",
             key="send_email_button_manual",
             use_container_width=True,
+            # Le bouton est désactivé si l'audio OU le PDF est manquant
             disabled=not (audio_file_bytes and pdf_bytes),
         )
 
