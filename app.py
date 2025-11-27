@@ -287,7 +287,7 @@ def create_strategic_prompt(opportunity_title, novatech_context, opportunity_sec
     Pour cette opportunité spécifique, générez un résumé concis qui répond à deux questions essentielles pour la prise de décision du Directeur :
 
     1. **Bénéfice Directeur :** Expliquez en quoi M. le Directeur va concrètement en profiter (gain stratégique, réduction de coût, innovation, positionnement marché). (Titre: 'BÉNÉFICE DIRECTEUR')
-    2. **Mise en Œuvre :** Expliquez comment il peut concrètement servir de cette opportunité (quelle expertise NOVATECH utiliser, actions à entreprendre, étapes clés pour l'implémentation du projet/soumission). (Titre: 'MISE EN ŒUVRE')
+    2. **Mise en Œuvre :** Expliquez comment il peut concrètement servir de cette opportunité (quelle expertise NOVATECH utiliser, actions à entreprendre, étapes clés pour l'implémentation du projet/soumission). Le contenu de cette section doit être structuré de manière claire, en utilisant des points numérotés pour les listes principales et des astérisques (*) pour les sous-listes, et en utilisant des doubles astérisques (**) pour mettre en gras les mots clés techniques et stratégiques. (Titre: 'MISE EN ŒUVRE')
 
     Format de sortie requis (strictement du texte, avec les titres BÉNÉFICE DIRECTEUR: et MISE EN ŒUVRE: sur des lignes distinctes) :
     BÉNÉFICE DIRECTEUR: <Votre réponse ici>
@@ -340,27 +340,33 @@ def clean_markdown_formatting(text):
     """
     Convertit les formats Markdown (**gras**, *italique*) en balises HTML ReportLab
     (<b>gras</b>, <i>italique</i>) et ajoute des sauts de ligne (<br/>) pour
-    structurer les listes numérotées générées par l'IA.
+    structurer les listes numérotées et les sous-listes (puces) générées par l'IA.
     """
     if not isinstance(text, str):
         return text
 
     # 1. Convertir **gras** en <b>gras</b>
-    # Utilise une expression régulière non gourmande pour capturer le contenu entre **...**
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
 
-    # 2. Convertir *italique* en <i>italique</i>
-    # Utilise une expression régulière non gourmande pour capturer le contenu entre *...*
-    text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
+    # 2. Convertir *italique* en <i>italique</i> (Uniquement si c'est encadré pour éviter les puces)
+    text = re.sub(r"\*([^\s\*].*?[^\s\*])\*", r"<i>\1</i>", text)
 
     # 3. Remplacement des séparateurs de liste (X.) par un saut de ligne ReportLab <br/>
-    # Recherche 1. ou 2. ou 3. etc., suivi d'un espace, et le remplace par <br/>X.
-    # Ceci force le point de liste à commencer sur une nouvelle ligne.
+    # Recherche X. suivi d'un espace, et le remplace par <br/>X.
     text = re.sub(r"(\d+\.)\s", r"<br/>\1 ", text)
 
-    # Supprimer un éventuel <br/> si le texte commence par un point de liste
+    # 4. Remplacement des puces de sous-liste (*).
+    # Recherche '* ' potentiellement précédé par un saut de ligne (ce qui garantit que c'est une puce)
+    # ou au milieu du texte. On utilise un saut de ligne + tiret '-' pour la puce dans le PDF.
+    # On ajoute des espaces pour éviter de capturer l'astérisque de la balise italique.
+    text = re.sub(r"(\n|\s)\*\s", r"<br/>- ", text)
+    # Si la puce est au début du texte:
+    if text.startswith("* "):
+        text = text.replace("* ", "- ", 1)  # Remplace le premier * par un tiret
+
+    # 5. Clean up any initial <br/>
     if text.startswith("<br/>"):
-        text = text[5:]
+        text = text[5:].strip()
 
     return text
 
@@ -395,26 +401,24 @@ def generate_script(all_opportunities):
     """Rédige le script vocal pour le DG, basé sur les analyses stratégiques."""
 
     briefing_points = []
+
+    # Nettoyage des balises HTML pour l'audio/script
+    def clean_for_audio(text):
+        # On enlève toutes les balises et les caractères de saut de ligne ReportLab.
+        text = clean_markdown_formatting(text)
+        text = re.sub(r"<\/?b>|<\/?i>|<br\/>|<br>", "", text)
+        return text.replace(
+            "-", ", "
+        ).strip()  # Remplacer les tirets des sous-listes par une virgule pour la prononciation
+
     for opp in all_opportunities:
-        # On utilise le texte nettoyé des astérisques pour l'email/audio,
-        # mais on laisse les retours à la ligne pour le script pour une bonne lecture.
-        # On peut enlever tous les tags HTML ici pour l'audio/script.
-        cleaned_titre = re.sub(
-            r"<\/?b>|<\/?i>|<br\/>", "", clean_markdown_formatting(opp["titre"])
-        )
-        cleaned_benefice = re.sub(
-            r"<\/?b>|<\/?i>|<br\/>",
-            "",
-            clean_markdown_formatting(opp["Bénéfice Directeur"]),
-        )
-        cleaned_oeuvre = re.sub(
-            r"<\/?b>|<\/?i>|<br\/>",
-            "",
-            clean_markdown_formatting(opp["Mise en Oeuvre"]),
-        )
+        cleaned_titre = clean_for_audio(opp["titre"])
+        cleaned_conditions = clean_for_audio(opp["conditions"])
+        cleaned_benefice = clean_for_audio(opp["Bénéfice Directeur"])
+        cleaned_oeuvre = clean_for_audio(opp["Mise en Oeuvre"])
 
         briefing_points.append(
-            f"Opportunité {cleaned_titre} (Secteur {opp['secteur']}). Date limite: {opp['date_limite']}. Le bénéfice stratégique pour NOVATECH est : {cleaned_benefice}. La mise en oeuvre concrète implique : {cleaned_oeuvre}."
+            f"Opportunité {cleaned_titre} (Secteur {opp['secteur']}). Date limite: {opp['date_limite']}. Conditions de soumission: {cleaned_conditions}. Le bénéfice stratégique pour NOVATECH est : {cleaned_benefice}. La mise en oeuvre concrète implique, et je cite l'analyse: {cleaned_oeuvre}."
         )
 
     text_for_script = "\n".join(briefing_points)
@@ -427,18 +431,19 @@ def generate_script(all_opportunities):
     
     Rédige un briefing vocal concis, professionnel et structuré pour le Directeur de NOVATECH.
     
-    Le texte doit être optimisé pour un DISCORS ORAL, sans utiliser de caractères spéciaux ou de listes. Utilise des phrases complètes et des transitions fluides.
-    
-    Structure ton rapport en deux parties claires :
-    1. Introduction et synthèse des opportunités Numériques prioritaires.
-    2. Détail pour chaque opportunité (Numérique et Autres), en citant le Bénéfice Directeur et une action clé de Mise en Œuvre.
+    Le texte doit être optimisé pour un DISCORS ORAL, sans utiliser de balises HTML, de caractères spéciaux ou de listes. Utilise des phrases complètes et des transitions fluides.
+
+    Pour chaque opportunité, tu dois obligatoirement inclure:
+    - Le titre, le secteur et la date limite.
+    - Les **Conditions de soumission**.
+    - Le Bénéfice Directeur.
+    - La **Mise en Œuvre détaillée** (l'intégralité du texte de 'Mise en oeuvre concrète implique' doit être réutilisée, ne pas la résumer).
 
     Commence par "Monsieur le Directeur, voici le point de veille stratégique du Sahel de ce jour."
     Termine par : "Vous trouverez le rapport détaillé complet, incluant l'analyse stratégique Bénéfice Directeur et Mise en Œuvre pour chaque opportunité, au format PDF, dans le mail ci-joint, ainsi que les détails complets dans l'onglet 'Vue Galerie' de l'application."
     """
     script = model.generate_content(script_prompt).text
-    # Un nettoyage final pour le script audio s'assurer que ReportLab n'a pas laissé de trace, même si la logique ci-dessus devrait suffire.
-    return re.sub(r"\*\*", "", script)
+    return script
 
 
 @st.cache_data(show_spinner=False)
@@ -509,7 +514,7 @@ def generate_pdf_report(all_opportunities):
 
         # Opportunities details
         for opp in all_opportunities:
-            # Nettoyage des chaînes
+            # Nettoyage des chaînes (Utilisation de la fonction de conversion HTML/structure)
             cleaned_titre = clean_markdown_formatting(opp["titre"])
             cleaned_conditions = clean_markdown_formatting(opp["conditions"])
             cleaned_benefice = clean_markdown_formatting(opp["Bénéfice Directeur"])
@@ -518,7 +523,7 @@ def generate_pdf_report(all_opportunities):
             # Titre de l'opportunité
             flowables.append(
                 Paragraph(
-                    f"<font size='14'><b>OPPORTUNITÉ :</b> {cleaned_titre}</font>",  # Utilise le texte nettoyé
+                    f"<font size='14'><b>OPPORTUNITÉ :</b> {cleaned_titre}</font>",
                     styles["Heading2"],
                 )
             )
@@ -531,10 +536,9 @@ def generate_pdf_report(all_opportunities):
                     styles["Normal"],
                 )
             )
+            # Conditions
             flowables.append(
-                Paragraph(
-                    f"<b>Conditions :</b> {cleaned_conditions}", styles["Normal"]
-                )  # Utilise le texte nettoyé
+                Paragraph(f"<b>Conditions :</b> {cleaned_conditions}", styles["Normal"])
             )
             flowables.append(Spacer(1, 6))
 
@@ -545,9 +549,7 @@ def generate_pdf_report(all_opportunities):
                     styles["h3"],
                 )
             )
-            flowables.append(
-                Paragraph(cleaned_benefice, styles["Normal"])
-            )  # Utilise le texte nettoyé
+            flowables.append(Paragraph(cleaned_benefice, styles["Normal"]))
 
             # Mise en Œuvre
             flowables.append(
@@ -556,9 +558,8 @@ def generate_pdf_report(all_opportunities):
                     styles["h3"],
                 )
             )
-            flowables.append(
-                Paragraph(cleaned_oeuvre, styles["Normal"])
-            )  # Utilise le texte nettoyé
+            # Grâce à clean_markdown_formatting, cette section sera correctement structurée avec <br/> et les balises <b>
+            flowables.append(Paragraph(cleaned_oeuvre, styles["Normal"]))
 
             flowables.append(Spacer(1, 18))
 
@@ -625,49 +626,40 @@ def send_email_pro(
         )
 
 
-# --- FONCTIONS DE VUE (Inchangées) ---
+# --- FONCTIONS DE VUE (MISE À JOUR) ---
 
 
 def display_opportunity_card(opp):
     """Affiche une opportunité dans un format de carte HTML/Markdown pour le style."""
 
-    # Nettoyage des astérisques pour l'affichage de la carte
-    # NOTE: On enlève les balises <br/> pour éviter qu'elles ne s'affichent en HTML brut dans le petit texte.
-    cleaned_titre = clean_markdown_formatting(opp["titre"]).replace("<br/>", "")
-    cleaned_conditions = clean_markdown_formatting(opp["conditions"]).replace(
-        "<br/>", ""
+    # Nettoyage et conversion pour le PDF (qui utilise maintenant <b> et <br/>)
+    # Pour l'affichage dans la carte, nous utilisons directement le HTML.
+
+    # On enlève les sauts de ligne ReportLab du snippet pour la concision
+    cleaned_titre = clean_markdown_formatting(opp["titre"]).replace("<br/>", " ")
+    cleaned_conditions_snippet = clean_markdown_formatting(opp["conditions"]).replace(
+        "<br/>", " "
     )
     cleaned_benefice = clean_markdown_formatting(opp["Bénéfice Directeur"])
     cleaned_oeuvre = clean_markdown_formatting(opp["Mise en Oeuvre"])
 
-    # Remplacer les balises HTML <b>/<i> par **/** pour que Streamlit les affiche correctement dans le Markdown
-    # Attention: ReportLab utilise <b>. Streamlit utilise **
-    cleaned_benefice_md = (
-        cleaned_benefice.replace("<b>", "**")
-        .replace("</b>", "**")
-        .replace("<i>", "*")
-        .replace("</i>", "*")
-    )
-    cleaned_oeuvre_md = (
-        cleaned_oeuvre.replace("<b>", "**")
-        .replace("</b>", "**")
-        .replace("<i>", "*")
-        .replace("</i>", "*")
-    )
+    # Remplacement de <br/> par <br> pour la compatibilité HTML du navigateur
+    final_benefice_html = cleaned_benefice.replace("<br/>", "<br>")
+    final_oeuvre_html = cleaned_oeuvre.replace("<br/>", "<br>")
 
     html_content = f"""
     <div class="opp-card">
         <span class="opp-sector">📍 {opp['secteur']} (Page {opp['page']})</span>
         <p class="opp-title">{cleaned_titre}</p>
         <p class="opp-date">Date Limite: <b>{opp['date_limite']}</b></p>
-        <small>Conditions: {cleaned_conditions[:100]}{'...' if len(cleaned_conditions) > 100 else ''}</small>
+        <small>Conditions: {cleaned_conditions_snippet[:100]}{'...' if len(cleaned_conditions_snippet) > 100 else ''}</small>
         <hr style="border-top: 1px solid #f1f3f5; margin: 10px 0;">
         <details>
             <summary>Analyse Stratégique</summary>
             <p style="font-size: 14px; margin-bottom: 5px;"><b>BÉNÉFICE DIRECTEUR:</b></p>
-            <p style="font-size: 14px;">{cleaned_benefice_md.replace('<br/>', '<br>')}</p>
+            <p style="font-size: 14px;">{final_benefice_html}</p>
             <p style="font-size: 14px; margin-bottom: 5px;"><b>MISE EN ŒUVRE:</b></p>
-            <p style="font-size: 14px;">{cleaned_oeuvre_md.replace('<br/>', '<br>')}</p>
+            <p style="font-size: 14px;">{final_oeuvre_html}</p>
         </details>
     </div>
     """
@@ -1075,43 +1067,24 @@ if st.session_state["analyse_completee"]:
     with tab_table:
         st.markdown("### Détail en Tableau (Exportable en CSV)")
         df = pd.DataFrame(all_opportunities)
-        # Nettoyage des colonnes pour un affichage propre dans le tableau (optionnel)
-        df["titre"] = (
-            df["titre"]
-            .apply(clean_markdown_formatting)
-            .str.replace("<b>", "")
-            .str.replace("</b>", "")
-            .str.replace("<i>", "")
-            .str.replace("</i>", "")
-            .str.replace("<br/>", " ")
-        )
-        df["conditions"] = (
-            df["conditions"]
-            .apply(clean_markdown_formatting)
-            .str.replace("<b>", "")
-            .str.replace("</b>", "")
-            .str.replace("<i>", "")
-            .str.replace("</i>", "")
-            .str.replace("<br/>", " ")
-        )
-        df["Bénéfice Directeur"] = (
-            df["Bénéfice Directeur"]
-            .apply(clean_markdown_formatting)
-            .str.replace("<b>", "")
-            .str.replace("</b>", "")
-            .str.replace("<i>", "")
-            .str.replace("</i>", "")
-            .str.replace("<br/>", " ")
-        )
-        df["Mise en Oeuvre"] = (
-            df["Mise en Oeuvre"]
-            .apply(clean_markdown_formatting)
-            .str.replace("<b>", "")
-            .str.replace("</b>", "")
-            .str.replace("<i>", "")
-            .str.replace("</i>", "")
-            .str.replace("<br/>", " ")
-        )
+        # Nettoyage des colonnes pour un affichage propre dans le tableau (optionnel: enlever le HTML)
+
+        # Fonction utilitaire pour nettoyer le HTML des colonnes du DataFrame (non formatées)
+        def clean_html_for_df(text):
+            if not isinstance(text, str):
+                return text
+            # Remplacer les balises <br/> par des espaces pour le tableau
+            text = text.replace("<br/>", " ").replace("<br>", " ")
+            # Enlever toutes les autres balises HTML (<b>, <i>, etc.)
+            text = re.sub(r"<[^>]+>", "", text)
+            # Remplacer les astérisques résiduels par des tirets pour les listes
+            text = text.replace("*", "-").replace("  ", " ")
+            return text
+
+        df["titre"] = df["titre"].apply(clean_html_for_df)
+        df["conditions"] = df["conditions"].apply(clean_html_for_df)
+        df["Bénéfice Directeur"] = df["Bénéfice Directeur"].apply(clean_html_for_df)
+        df["Mise en Oeuvre"] = df["Mise en Oeuvre"].apply(clean_html_for_df)
 
         st.dataframe(
             df,
