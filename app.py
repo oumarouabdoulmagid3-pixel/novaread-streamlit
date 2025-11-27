@@ -88,7 +88,7 @@ st.set_page_config(
     page_title="NovaReader - Veille Stratégique Avancée", page_icon="🚀", layout="wide"
 )
 
-# --- CSS PERSONNALISÉ (Inchangé) ---
+# --- CSS PERSONNALISÉ (Omis pour concision) ---
 st.markdown(
     """
 <style>
@@ -301,7 +301,7 @@ def analyze_opportunity_strategically(
 ):
     """Analyse un Appels d'Offres dynamiquement pour le Directeur en structurant la réponse."""
     prompt = create_strategic_prompt(
-        opportunity_title, novatech_context, opportunity_sector
+        opportunity_title, opportunity_sector, novatech_context
     )
 
     try:
@@ -358,7 +358,6 @@ def clean_markdown_formatting(text):
     # 4. Remplacement des puces de sous-liste (*).
     # Recherche '* ' potentiellement précédé par un saut de ligne (ce qui garantit que c'est une puce)
     # ou au milieu du texte. On utilise un saut de ligne + tiret '-' pour la puce dans le PDF.
-    # On ajoute des espaces pour éviter de capturer l'astérisque de la balise italique.
     text = re.sub(r"(\n|\s)\*\s", r"<br/>- ", text)
     # Si la puce est au début du texte:
     if text.startswith("* "):
@@ -397,8 +396,11 @@ Novatech - Veille Stratégique
     return subject, email_body
 
 
+# ===================================================================================
+# === MODIFICATION MAJEURE ICI : NOUVELLE LOGIQUE POUR UN SCRIPT COURT ET CIBLÉ ===
+# ===================================================================================
 def generate_script(all_opportunities):
-    """Rédige le script vocal pour le DG, basé sur les analyses stratégiques."""
+    """Rédige un script vocal TRES CONCIS pour le DG, en accentuant la Mise en Œuvre."""
 
     briefing_points = []
 
@@ -412,38 +414,47 @@ def generate_script(all_opportunities):
         ).strip()  # Remplacer les tirets des sous-listes par une virgule pour la prononciation
 
     for opp in all_opportunities:
+        # On nettoie tous les champs pour qu'ils soient lisibles par gTTS
         cleaned_titre = clean_for_audio(opp["titre"])
         cleaned_conditions = clean_for_audio(opp["conditions"])
         cleaned_benefice = clean_for_audio(opp["Bénéfice Directeur"])
         cleaned_oeuvre = clean_for_audio(opp["Mise en Oeuvre"])
 
+        # On formate l'information pour le prompt
+        # L'IA est ensuite chargée de synthétiser le Bénéfice et l'Oeuvre dans le script final
         briefing_points.append(
-            f"Opportunité {cleaned_titre} (Secteur {opp['secteur']}). Date limite: {opp['date_limite']}. Conditions de soumission: {cleaned_conditions}. Le bénéfice stratégique pour NOVATECH est : {cleaned_benefice}. La mise en oeuvre concrète implique, et je cite l'analyse: {cleaned_oeuvre}."
+            f"[OPPORTUNITÉ] Titre: {cleaned_titre} (Secteur {opp['secteur']}). Date limite: {opp['date_limite']}. Conditions: {cleaned_conditions}. [BENEFICE DIRECTEUR COMPLET] {cleaned_benefice}. [MISE EN OEUVRE COMPLETE] {cleaned_oeuvre}."
         )
 
     text_for_script = "\n".join(briefing_points)
 
     script_prompt = f"""
-    Agis comme un secrétaire de direction efficace.
-    Voici le récapitulatif des opportunités de veille et leur analyse stratégique :
+    Agis comme un secrétaire de direction efficace. Ton objectif est de rédiger un briefing vocal TRES CONCIS et PROFESSIONNEL pour le Directeur de NOVATECH.
+
+    Le temps de lecture total doit être le plus court possible, en se concentrant sur l'essentiel.
+
+    Voici le récapitulatif des opportunités de veille et leur analyse stratégique (champs complets) :
     
     {text_for_script}
     
-    Rédige un briefing vocal concis, professionnel et structuré pour le Directeur de NOVATECH.
-    
-    Le texte doit être optimisé pour un DISCORS ORAL, sans utiliser de balises HTML, de caractères spéciaux ou de listes. Utilise des phrases complètes et des transitions fluides.
+    Règles pour le discours oral (optimisation pour la synthèse vocale gTTS):
+    1. Commence par une salutation et l'introduction (voir fin de ce prompt).
+    2. Pour chaque opportunité, tu dois obligatoirement inclure:
+        - Le titre et le secteur.
+        - Le Bénéfice Directeur, **synthétisé en UNE SEULE phrase d'accroche (le plus court possible).**
+        - **La Mise en Œuvre :** Utilise un ton de recommandation d'action immédiate. Rédige un passage de 2 à 3 phrases pour cette section, en reprenant les **actions clés** de la section '[MISE EN OEUVRE COMPLETE]' pour donner au Directeur des instructions claires. C'est le point le plus important et doit avoir l'accent.
+    3. Le texte doit être fluide, sans listes (chiffres ou puces), sans balises HTML ou caractères spéciaux.
 
-    Pour chaque opportunité, tu dois obligatoirement inclure:
-    - Le titre, le secteur et la date limite.
-    - Les **Conditions de soumission**.
-    - Le Bénéfice Directeur.
-    - La **Mise en Œuvre détaillée** (l'intégralité du texte de 'Mise en oeuvre concrète implique' doit être réutilisée, ne pas la résumer).
-
-    Commence par "Monsieur le Directeur, voici le point de veille stratégique du Sahel de ce jour."
+    Commence par "Monsieur le Directeur, voici le point de veille stratégique du Sahel de ce jour. Trois opportunités majeures ont été identifiées."
     Termine par : "Vous trouverez le rapport détaillé complet, incluant l'analyse stratégique Bénéfice Directeur et Mise en Œuvre pour chaque opportunité, au format PDF, dans le mail ci-joint, ainsi que les détails complets dans l'onglet 'Vue Galerie' de l'application."
     """
     script = model.generate_content(script_prompt).text
     return script
+
+
+# ===================================================================================
+# === FIN MODIFICATION generate_script ===
+# ===================================================================================
 
 
 @st.cache_data(show_spinner=False)
@@ -627,7 +638,7 @@ def send_email_pro(
         )
 
 
-# --- FONCTIONS DE VUE (MISE À JOUR) ---
+# --- FONCTIONS DE VUE (Inchangées) ---
 
 
 def display_opportunity_card(opp):
@@ -752,7 +763,7 @@ with col_b:
     )
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC DE TRAITEMENT (Logique inchangée, utilise les fonctions de nettoyage) ===
+# === BLOC DE TRAITEMENT (Logique inchangée, utilise la nouvelle fonction generate_script) ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if (
@@ -925,7 +936,7 @@ if (
             with st.spinner("1/3 - Rédaction du script audio stratégique..."):
                 script_content = generate_script(
                     all_opportunities
-                )  # Appelle la fonction nettoyée
+                )  # Appelle la fonction MODIFIÉE
 
             # Réinitialisation de la cache pour forcer la génération audio
             generate_audio.clear()
@@ -1020,7 +1031,7 @@ if (
             os.remove(decrypted_pdf_path)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (AVEC CORRECTION AUDIO) ===
+# === BLOC D'AFFICHAGE PERSISTANT DES RÉSULTATS (Inchangé) ===
 # ---------------------------------------------------------------------------------------------------------------------
 
 if st.session_state["analyse_completee"]:
