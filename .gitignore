@@ -9,5 +9,5 @@ __pycache__/
 # Si vous aviez des fichiers .ttf
 *.ttf
 
-# Dossier local (optionnel)
-.vscode/.streamlit/secrets.toml
+# Dossier local (optionnel
+.streamlit/secrets.toml

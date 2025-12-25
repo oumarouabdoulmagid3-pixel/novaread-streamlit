@@ -21,7 +21,7 @@ import re
 import time
 
 # =========================================================================
-# === 1. CONFIGURATION & STYLE (INCHANGÉ - VOTRE STYLE PRÉSERVÉ) ===
+# === 1. CONFIGURATION & STYLE (INTACT - VOTRE STYLE) ===
 # =========================================================================
 
 st.set_page_config(page_title="NovaReader AI", page_icon="💎", layout="wide")
@@ -220,7 +220,7 @@ DEFAULT_RECEIVER_EMAIL = "daouda.hamadou@novatech.ne"
 NOVATECH_CONTEXT = """
 CONTEXTE ENTREPRISE : NOVATECH Solutions Technologiques (Niamey, Niger).
 Expertises : Réseaux, Télécoms, Cloud, Cybersécurité, Dév Web/Mobile, IA, Énergie, Électronique, Formation.
-Objectif : Identifier des appels d'offres où ces expertises donnent un avantage concurrentiel.
+Cible : Appels d'offres techniques au Niger.
 """
 
 # --- ETAT ---
@@ -243,57 +243,44 @@ if "last_uploaded_pdf_name" not in st.session_state:
 if "auto_email_sent" not in st.session_state:
     st.session_state["auto_email_sent"] = False
 
-# --- FONCTIONS CORE (AMÉLIORÉES) ---
+# --- FONCTIONS CORE (MODIFIÉES POUR CORRECTIONS) ---
 
 
 def clean_markdown_formatting(text):
-    """Nettoyage pour affichage HTML/PDF (garde le gras en HTML)"""
     if isinstance(text, list):
         text = " ".join([str(x) for x in text])
     if not isinstance(text, str):
         return str(text) if text is not None else ""
-    # Convertit le gras Markdown en HTML pour Streamlit/PDF
+    # Gras HTML
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    # Gère les listes numérotées
+    # Listes
     text = re.sub(r"(\d+\.)\s", r"<br/>\1 ", text)
-    # Gère les puces
     text = re.sub(r"(\n|\s)\*\s", r"<br/>- ", text)
     return text.strip()
 
 
 def clean_for_audio(text):
-    """Nettoyage STRICT pour l'audio (supprime TOUTES les balises et étoiles)"""
-    if not isinstance(text, str):
+    """NOUVEAU: Nettoyage drastique pour l'audio"""
+    if not text:
         return ""
-    # Supprime les astérisques de gras
-    text = text.replace("**", "").replace("*", "")
-    # Supprime les balises HTML éventuelles
-    text = re.sub(r"<[^>]+>", "", text)
-    # Remplace les tirets de liste par des virgules pour la fluidité
-    text = text.replace("- ", ", ").replace("  ", " ")
-    return text.strip()
+    t = text
+    # Enlève le gras markdown
+    t = t.replace("**", "")
+    # Enlève les astérisques isolées
+    t = t.replace("*", "")
+    # Enlève les balises HTML éventuelles
+    t = re.sub(r"<[^>]+>", "", t)
+    # Remplace les tirets de liste par des virgules
+    t = t.replace("-", ",")
+    return t.strip()
 
 
 def analyze_page_structured(image):
     prompt = f"""
-    Tu es un analyste stratégique pour NOVATECH. Contexte : {NOVATECH_CONTEXT}
-    
-    Tâche : Analyse cette page de journal. Si tu trouves des Appels d'Offres (Numérique, Énergie, BTP, Santé, Éducation), extrais-les.
-    
-    Pour chaque offre, rédige une section 'profit_dg' expliquant spécifiquement comment NOVATECH peut gagner ce marché grâce à ses expertises.
-    
-    Réponds UNIQUEMENT au format JSON :
-    [
-      {{
-        "titre": "Titre complet",
-        "secteur": "Secteur",
-        "date_limite": "JJ/MM/AAAA",
-        "conditions": "Résumé des conditions d'admissibilité",
-        "profit_dg": "Argumentaire stratégique pour le DG (Pourquoi nous ?)",
-        "mise_en_oeuvre": "Actions techniques immédiates pour répondre"
-      }}
-    ]
-    Si rien, renvoie : []
+    Analyste NOVATECH. Contexte : {NOVATECH_CONTEXT}
+    Analyse cette page. Trouve les appels d'offres (Numérique, Énergie, BTP, Santé, Éducation).
+    JSON Requis : [{{ "titre": "...", "secteur": "...", "date_limite": "...", "conditions": "...", "Bénéfice Directeur": "...", "Mise en Oeuvre": "..." }}]
+    Si vide : []
     """
     try:
         response = model.generate_content(
@@ -306,27 +293,23 @@ def analyze_page_structured(image):
 
 
 def generate_script(all_opportunities):
-    """Génère un script narratif fluide pour le DG."""
-    script_parts = [
-        "Bonjour Monsieur le Directeur. Voici le point de veille stratégique du jour."
-    ]
+    """MODIFIÉ: Script incluant Conditions et Bénéfice + Nettoyage"""
+    script_parts = ["Bonjour Monsieur le Directeur. Voici le point de veille."]
 
-    for idx, opp in enumerate(all_opportunities):
-        # Nettoyage spécifique audio ici
-        titre = clean_for_audio(opp.get("titre", ""))
-        date = clean_for_audio(opp.get("date_limite", "non spécifiée"))
-        cond = clean_for_audio(opp.get("conditions", "standard"))
-        profit = clean_for_audio(opp.get("profit_dg", ""))
+    for idx, o in enumerate(all_opportunities):
+        # Nettoyage avant insertion dans le prompt
+        titre = clean_for_audio(o.get("titre", ""))
+        date = clean_for_audio(o.get("date_limite", ""))
+        cond = clean_for_audio(o.get("conditions", "Conditions standards"))
+        gain = clean_for_audio(o.get("Bénéfice Directeur", ""))
 
-        script_parts.append(f"Opportunité numéro {idx+1} : {titre}.")
-        script_parts.append(f"La date limite est le {date}.")
-        script_parts.append(f"Concernant les conditions : {cond}.")
-        script_parts.append(f"Voici l'intérêt stratégique pour Novatech : {profit}.")
+        script_parts.append(f"Opportunité {idx+1}: {titre}.")
+        script_parts.append(f"Date limite: {date}.")
+        script_parts.append(f"Conditions d'admissibilité: {cond}.")
+        script_parts.append(f"Intérêt pour vous: {gain}.")
         script_parts.append("Passons à la suivante.")
 
-    script_parts.append(
-        "Vous trouverez les détails de mise en œuvre dans le rapport PDF ci-joint. Bonne journée."
-    )
+    script_parts.append("Détails complets dans le PDF joint.")
     return " ".join(script_parts)
 
 
@@ -335,7 +318,7 @@ def generate_audio(text):
     if not text:
         return None
     try:
-        # Le texte arrive ici DÉJÀ nettoyé par generate_script -> clean_for_audio
+        # Le texte est déjà nettoyé par generate_script via clean_for_audio
         tts = gTTS(text=text, lang="fr", tld="fr")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
@@ -352,63 +335,58 @@ def generate_pdf_report(all_ops):
         doc = SimpleDocTemplate(buffer, pagesize=letter)
         styles = getSampleStyleSheet()
 
-        # Styles personnalisés pour le PDF
-        title_style = ParagraphStyle(
-            "NovaTitle",
-            parent=styles["Title"],
-            textColor=colors.HexColor("#00AEEF"),
-            spaceAfter=20,
+        # Styles perso basés sur reportlab standard pour rester compatible
+        styles.add(
+            ParagraphStyle(
+                name="NovaTitle",
+                parent=styles["Heading1"],
+                textColor=colors.HexColor("#00AEEF"),
+            )
         )
-        heading_style = ParagraphStyle(
-            "NovaHeading",
-            parent=styles["Heading2"],
-            textColor=colors.HexColor("#2C3E50"),
-            spaceBefore=15,
-        )
-        normal_style = styles["Normal"]
 
         elements = [
-            Paragraph("<b>Rapport de Veille Stratégique - NOVATECH</b>", title_style),
+            Paragraph("<b>Rapport Veille Novatech</b>", styles["NovaTitle"]),
             Spacer(1, 12),
         ]
-
         for o in all_ops:
+            # Nettoyage HTML pour PDF
             titre = clean_markdown_formatting(o.get("titre", ""))
             secteur = o.get("secteur", "")
-            profit = clean_markdown_formatting(o.get("profit_dg", ""))
-            action = clean_markdown_formatting(o.get("mise_en_oeuvre", ""))
+            date = o.get("date_limite", "")
+            cond = clean_markdown_formatting(o.get("conditions", ""))
+            gain = clean_markdown_formatting(o.get("Bénéfice Directeur", ""))
+            action = clean_markdown_formatting(o.get("Mise en Oeuvre", ""))
 
-            # Bloc Titre
-            elements.append(Paragraph(f"📌 {titre}", heading_style))
+            elements.append(Paragraph(f"<b>📌 {titre}</b>", styles["Heading2"]))
             elements.append(
-                Paragraph(
-                    f"<b>Secteur :</b> {secteur} | <b>Date Limite :</b> {o.get('date_limite','?')}",
-                    normal_style,
-                )
+                Paragraph(f"<i>Secteur: {secteur} | Date: {date}</i>", styles["Normal"])
             )
             elements.append(Spacer(1, 5))
 
-            # Bloc Stratégie
+            # AJOUT DES CONDITIONS
             elements.append(
-                Paragraph(
-                    f"<b>💡 IDÉE STRATÉGIQUE POUR LE DG :</b><br/>{profit}",
-                    normal_style,
-                )
+                Paragraph(f"<b>📋 Conditions d'accès:</b><br/>{cond}", styles["Normal"])
             )
             elements.append(Spacer(1, 5))
 
-            # Bloc Action
+            # AJOUT DU BENEFICE/STRATEGIE
             elements.append(
-                Paragraph(f"<b>🚀 MISE EN ŒUVRE :</b><br/>{action}", normal_style)
+                Paragraph(f"<b>💎 Stratégie DG:</b><br/>{gain}", styles["Normal"])
+            )
+            elements.append(Spacer(1, 5))
+
+            # MISE EN OEUVRE
+            elements.append(
+                Paragraph(f"<b>🚀 Mise en Oeuvre:</b><br/>{action}", styles["Normal"])
             )
             elements.append(Spacer(1, 15))
-            # Ligne de séparation
-            elements.append(Paragraph("_" * 60, normal_style))
+            elements.append(Paragraph("_" * 50, styles["Normal"]))
+            elements.append(Spacer(1, 15))
 
         doc.build(elements)
         buffer.seek(0)
         return buffer.getvalue()
-    except:
+    except Exception as e:
         return None
 
 
@@ -416,54 +394,47 @@ def send_email_pro(
     host, port, sender, passw, receiver, sub, all_opportunities, audio, pdf
 ):
     try:
-        # Création de la liste HTML des titres uniquement
-        list_html = ""
-        for o in all_opportunities:
-            titre = clean_markdown_formatting(o.get("titre", "Offre"))
-            list_html += f"<li><b>{titre}</b> (DL: {o.get('date_limite','?')})</li>"
-
-        html_body = f"""
-        <html>
-            <body style="font-family: Arial, color: #333;">
-                <h2 style="color: #00AEEF;">💎 NovaReader : Nouvelles Opportunités</h2>
-                <p>Bonjour Monsieur le Directeur,</p>
-                <p>Voici les offres identifiées ce jour :</p>
-                <ul style="background: #f4f7f6; padding: 15px; border-left: 4px solid #00AEEF;">
-                    {list_html}
-                </ul>
-                <p>Veuillez trouver ci-joint :</p>
-                <ul>
-                    <li>🔊 <b>Le briefing audio</b> (Stratégie & Conditions)</li>
-                    <li>📄 <b>Le rapport PDF</b> (Détails & Mise en œuvre)</li>
-                </ul>
-                <p>Cordialement,<br>Votre Agent IA</p>
-            </body>
-        </html>
-        """
-
         msg = MIMEMultipart()
         msg["From"] = sender
         msg["To"] = receiver
         msg["Subject"] = sub
-        msg.attach(MIMEText(html_body, "html"))  # Envoi en HTML
+
+        # MODIFIÉ: Corps HTML simple avec liste des titres
+        list_items = ""
+        for o in all_opportunities:
+            titre = clean_markdown_formatting(o.get("titre", ""))
+            date = o.get("date_limite", "")
+            list_items += f"<li><b>{titre}</b> (DL: {date})</li>"
+
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif;">
+            <h2 style="color: #00AEEF;">💎 Nouvelles Opportunités Détectées</h2>
+            <p>Bonjour Monsieur le Directeur,</p>
+            <p>Voici les appels d'offres identifiés :</p>
+            <ul>
+                {list_items}
+            </ul>
+            <p>Veuillez trouver ci-joint le briefing audio (stratégie) et le rapport PDF (détails techniques).</p>
+            <p>Cordialement,<br>NovaReader AI</p>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(html_body, "html"))
 
         if audio:
             p = MIMEBase("application", "octet-stream")
             p.set_payload(audio)
             encoders.encode_base64(p)
-            p.add_header(
-                "Content-Disposition", 'attachment; filename="briefing_strategique.mp3"'
-            )
+            p.add_header("Content-Disposition", 'attachment; filename="briefing.mp3"')
             msg.attach(p)
         if pdf:
             p = MIMEBase("application", "octet-stream")
             p.set_payload(pdf)
             encoders.encode_base64(p)
-            p.add_header(
-                "Content-Disposition", 'attachment; filename="rapport_analyse.pdf"'
-            )
+            p.add_header("Content-Disposition", 'attachment; filename="rapport.pdf"')
             msg.attach(p)
-
         with smtplib.SMTP_SSL(host, port) as s:
             s.login(sender, passw)
             s.send_message(msg)
@@ -473,11 +444,13 @@ def send_email_pro(
 
 
 def display_modern_card(opp):
-    # Nettoyage HTML pour l'affichage carte
     t = clean_markdown_formatting(opp.get("titre", "")).replace("<br/>", " ")
-    # On utilise profit_dg ici comme demandé
-    b = clean_markdown_formatting(opp.get("profit_dg", "")).replace("<br/>", "<br>")
-    m = clean_markdown_formatting(opp.get("mise_en_oeuvre", "")).replace(
+    # AJOUT CONDITIONS DANS LA CARTE
+    c = clean_markdown_formatting(opp.get("conditions", "")).replace("<br/>", "<br>")
+    b = clean_markdown_formatting(opp.get("Bénéfice Directeur", "")).replace(
+        "<br/>", "<br>"
+    )
+    m = clean_markdown_formatting(opp.get("Mise en Oeuvre", "")).replace(
         "<br/>", "<br>"
     )
 
@@ -489,9 +462,11 @@ def display_modern_card(opp):
             <span>📅 Limite: <b>{opp.get('date_limite','?')}</b></span>
             <span>📄 Page {opp.get('page','?')}</span>
         </div>
-        <div class="section-title">💎 Idée Stratégique (Usage Novatech)</div>
+        <div class="section-title">📋 Conditions</div>
+        <div class="section-content">{c}</div>
+        <div class="section-title">💎 Bénéfice Directeur</div>
         <div class="section-content">{b}</div>
-        <div class="section-title">🚀 Mise en Œuvre Technique</div>
+        <div class="section-title">🚀 Action Immédiate</div>
         <div class="section-content">{m}</div>
     </div>
     """
@@ -499,7 +474,7 @@ def display_modern_card(opp):
 
 
 # =========================================================================
-# === INTERFACE UTILISATEUR (INCHANGÉE - VOTRE STYLE) ===
+# === INTERFACE UTILISATEUR (DESIGN MODERNE - INCHANGÉ) ===
 # =========================================================================
 
 # HEADER
@@ -513,7 +488,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# SECTION CONFIGURATION
+# SECTION CONFIGURATION (Layout 2 colonnes)
 col_left, col_right = st.columns([1.5, 1], gap="large")
 
 with col_left:
@@ -522,6 +497,7 @@ with col_left:
         "Déposez le fichier PDF ici (crypté ou non)", type="pdf"
     )
 
+    # Reset logique si nouveau fichier
     if (
         uploaded_pdf
         and st.session_state.get("last_uploaded_pdf_name") != uploaded_pdf.name
@@ -602,7 +578,7 @@ if not st.session_state["analyse_completee"]:
 
             # 2. ANALYSE
             status_container.update(
-                label="🧠 Analyse Cognitive en cours...", state="running"
+                label="🧠 Analyse Cognitive en cours (1 appel/page)...", state="running"
             )
             images = convert_from_bytes(open(path, "rb").read())
             st.session_state["num_pages_analyzed"] = len(images)
@@ -612,16 +588,17 @@ if not st.session_state["analyse_completee"]:
             progress_bar = st.progress(0)
 
             for i, img in enumerate(images):
-                # time.sleep(2) # Décommenter si limite de quota
+                time.sleep(4)  # Protection Quota
                 res = analyze_page_structured(img)
                 if res:
                     for o in res:
                         o["page"] = i + 1
-                        # Sécurisation des clés si l'IA oublie
-                        if "profit_dg" not in o:
-                            o["profit_dg"] = "Analyse manquante"
-                        if "mise_en_oeuvre" not in o:
-                            o["mise_en_oeuvre"] = "Voir détails"
+                        if "Bénéfice Directeur" not in o:
+                            o["Bénéfice Directeur"] = "N/A"
+                        if "Mise en Oeuvre" not in o:
+                            o["Mise en Oeuvre"] = "Voir détails"
+                        if "conditions" not in o:
+                            o["conditions"] = "Voir dossier"
                         ops.append(o)
                 progress_bar.progress((i + 1) / len(images))
 
@@ -630,9 +607,9 @@ if not st.session_state["analyse_completee"]:
                 status_container.update(
                     label="📝 Rédaction du briefing DG...", state="running"
                 )
-                scr = generate_script(ops)  # Script nettoyé
+                scr = generate_script(ops)
                 aud = generate_audio(scr)
-                pdf = generate_pdf_report(ops)  # PDF Stylé
+                pdf = generate_pdf_report(ops)
 
                 st.session_state.update(
                     {
@@ -647,7 +624,7 @@ if not st.session_state["analyse_completee"]:
                 # ENVOI EMAIL
                 if aud and pdf and not st.session_state["auto_email_sent"]:
                     sub = f"Veille Stratégique - {pd.Timestamp.now().strftime('%d/%m')}"
-                    # Envoi avec la nouvelle fonction HTML
+                    # Appel de la fonction email mise à jour
                     ok, msg = send_email_pro(
                         SMTP_HOST,
                         SMTP_PORT,
@@ -655,7 +632,7 @@ if not st.session_state["analyse_completee"]:
                         SMTP_PASSWORD,
                         rec_email,
                         sub,
-                        ops,  # On passe la liste des opportunités
+                        ops,  # Liste des opportunités
                         aud,
                         pdf,
                     )
@@ -738,8 +715,14 @@ if st.session_state["analyse_completee"]:
 
     with tab_data:
         df = pd.DataFrame(st.session_state["all_opportunities"])
+        # Nettoyage pour affichage tableau propre
         if not df.empty:
-            cols_to_clean = ["titre", "conditions", "profit_dg", "mise_en_oeuvre"]
+            cols_to_clean = [
+                "titre",
+                "conditions",
+                "Bénéfice Directeur",
+                "Mise en Oeuvre",
+            ]
             for c in cols_to_clean:
                 if c in df.columns:
                     df[c] = df[c].apply(lambda x: re.sub(r"<[^>]+>", "", str(x)))
