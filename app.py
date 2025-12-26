@@ -19,9 +19,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 import re
 import time
+import urllib.parse
 
 # =========================================================================
-# === 1. CONFIGURATION & STYLE (INTACT - VOTRE STYLE) ===
+# === 1. CONFIGURATION & STYLE ===
 # =========================================================================
 
 st.set_page_config(page_title="NovaReader AI", page_icon="💎", layout="wide")
@@ -29,165 +30,27 @@ st.set_page_config(page_title="NovaReader AI", page_icon="💎", layout="wide")
 st.markdown(
     """
 <style>
-    /* IMPORT DE POLICE MODERNE */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        background-color: #F4F7F6;
-        color: #2C3E50;
-    }
-
-    /* HEADER STYLISÉ */
-    .main-header {
-        background: linear-gradient(135deg, #00AEEF 0%, #0077b6 100%);
-        padding: 2rem;
-        border-radius: 0 0 20px 20px;
-        color: white;
-        text-align: center;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 15px rgba(0, 174, 239, 0.3);
-    }
-    .main-header h1 {
-        color: white !important;
-        font-weight: 700;
-        letter-spacing: -1px;
-    }
-    .main-header p {
-        opacity: 0.9;
-        font-size: 1.1rem;
-    }
-
-    /* INPUTS & FILE UPLOADER (STYLE GLASS) */
-    .stTextInput > div > div > input {
-        border-radius: 12px;
-        border: 1px solid #E0E0E0;
-        padding: 10px 15px;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
-    }
-    .stTextInput > div > div > input:focus {
-        border-color: #00AEEF;
-        box-shadow: 0 0 0 2px rgba(0, 174, 239, 0.2);
-    }
-    [data-testid="stFileUploader"] {
-        background-color: white;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px dashed #00AEEF;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-
-    /* BOUTON D'ACTION PRINCIPAL */
-    .stButton > button {
-        width: 100%;
-        background: linear-gradient(90deg, #00AEEF 0%, #0077b6 100%);
-        color: white;
-        font-weight: 600;
-        border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: 12px;
-        transition: all 0.3s ease;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        box-shadow: 0 4px 15px rgba(0, 174, 239, 0.4);
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 174, 239, 0.6);
-        color: white !important;
-    }
-    .stButton > button:disabled {
-        background: #BDC3C7;
-        box-shadow: none;
-        cursor: not-allowed;
-    }
-
-    /* CARTE D'OPPORTUNITÉ (DESIGN MODERNE) */
-    .opp-card {
-        background: white;
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        border: 1px solid #F0F0F0;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    .opp-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        border-color: #00AEEF;
-    }
-    .opp-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 6px;
-        height: 100%;
-        background: #00AEEF;
-    }
-    .opp-badge {
-        background-color: #E3F8FF;
-        color: #0077b6;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        display: inline-block;
-        margin-bottom: 10px;
-    }
-    .opp-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #1A202C;
-        margin-bottom: 8px;
-        line-height: 1.4;
-    }
-    .opp-meta {
-        font-size: 0.85rem;
-        color: #718096;
-        margin-bottom: 15px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .section-title {
-        color: #00AEEF;
-        font-size: 0.9rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        margin-top: 12px;
-        margin-bottom: 4px;
-        letter-spacing: 0.5px;
-    }
-    .section-content {
-        font-size: 0.95rem;
-        color: #4A5568;
-        line-height: 1.5;
-    }
-
-    /* CUSTOM TABS */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: transparent;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        background-color: white;
-        border-radius: 10px;
-        border: 1px solid #E2E8F0;
-        padding: 0 20px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #00AEEF !important;
-        color: white !important;
-        border-color: #00AEEF !important;
-    }
-
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F4F7F6; color: #2C3E50; }
+    .main-header { background: linear-gradient(135deg, #00AEEF 0%, #0077b6 100%); padding: 2rem; border-radius: 0 0 20px 20px; color: white; text-align: center; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(0, 174, 239, 0.3); }
+    .main-header h1 { color: white !important; font-weight: 700; letter-spacing: -1px; }
+    .stTextInput > div > div > input { border-radius: 12px; border: 1px solid #E0E0E0; padding: 10px 15px; }
+    [data-testid="stFileUploader"] { background-color: white; padding: 20px; border-radius: 15px; border: 1px dashed #00AEEF; }
+    
+    .stButton > button { width: 100%; background: linear-gradient(90deg, #00AEEF 0%, #0077b6 100%); color: white; font-weight: 600; border: none; padding: 0.75rem 1.5rem; border-radius: 12px; transition: all 0.3s ease; text-transform: uppercase; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 174, 239, 0.6); color: white !important; }
+    
+    .opp-card { background: white; border-radius: 16px; padding: 24px; margin-bottom: 20px; border: 1px solid #F0F0F0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); transition: all 0.3s ease; position: relative; overflow: hidden; }
+    .opp-card:hover { transform: translateY(-5px); border-color: #00AEEF; }
+    .opp-card::before { content: ''; position: absolute; top: 0; left: 0; width: 6px; height: 100%; background: #00AEEF; }
+    .opp-badge { background-color: #E3F8FF; color: #0077b6; padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; display: inline-block; margin-bottom: 10px; }
+    .opp-title { font-size: 1.1rem; font-weight: 700; color: #1A202C; margin-bottom: 8px; line-height: 1.4; }
+    .opp-meta { font-size: 0.85rem; color: #718096; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
+    .section-title { color: #00AEEF; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin-top: 12px; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .section-content { font-size: 0.95rem; color: #4A5568; line-height: 1.5; }
+    
+    .whatsapp-btn { display: inline-flex; align-items: center; justify-content: center; background-color: #25D366; color: white !important; padding: 10px 20px; border-radius: 50px; text-decoration: none; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s ease; border: 1px solid #25D366; }
+    .whatsapp-btn:hover { background-color: #128C7E; transform: scale(1.05); }
 </style>
 """,
     unsafe_allow_html=True,
@@ -213,19 +76,27 @@ if not API_KEY:
 
 os.environ["GOOGLE_API_KEY"] = API_KEY
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 DEFAULT_RECEIVER_EMAIL = "daouda.hamadou@novatech.ne"
+DEFAULT_WHATSAPP_NUMBER = "+227 91 01 22 12"
 
+# --- LE CERVEAU STRATÉGIQUE ---
 NOVATECH_CONTEXT = """
 CONTEXTE ENTREPRISE : NOVATECH Solutions Technologiques (Niamey, Niger).
-Expertises : Réseaux, Télécoms, Cloud, Cybersécurité, Dév Web/Mobile, IA, Énergie, Électronique, Formation.
-Cible : Appels d'offres techniques au Niger.
+NOS EXPERTISES CLÉS :
+1. Réseaux & Télécoms (Fibre optique, VSAT, Installation LAN/WAN).
+2. Énergie (Solaire, Onduleurs, Électricité bâtiment).
+3. Développement (Web, Mobile, Logiciels sur mesure).
+4. Sécurité Électronique (Vidéosurveillance, Contrôle d'accès).
+5. Cloud & Data Center.
+6. Formation & Consulting IT.
 """
 
-# --- ETAT ---
 if "receiver_email" not in st.session_state:
     st.session_state["receiver_email"] = DEFAULT_RECEIVER_EMAIL
+if "whatsapp_number" not in st.session_state:
+    st.session_state["whatsapp_number"] = DEFAULT_WHATSAPP_NUMBER
 if "analyse_completee" not in st.session_state:
     st.session_state["analyse_completee"] = False
 if "all_opportunities" not in st.session_state:
@@ -236,14 +107,12 @@ if "audio_file_bytes" not in st.session_state:
     st.session_state["audio_file_bytes"] = None
 if "pdf_bytes" not in st.session_state:
     st.session_state["pdf_bytes"] = None
-if "num_pages_analyzed" not in st.session_state:
-    st.session_state["num_pages_analyzed"] = 0
 if "last_uploaded_pdf_name" not in st.session_state:
     st.session_state["last_uploaded_pdf_name"] = None
 if "auto_email_sent" not in st.session_state:
     st.session_state["auto_email_sent"] = False
 
-# --- FONCTIONS CORE (MODIFIÉES POUR CORRECTIONS) ---
+# --- FONCTIONS CORE ---
 
 
 def clean_markdown_formatting(text):
@@ -251,65 +120,103 @@ def clean_markdown_formatting(text):
         text = " ".join([str(x) for x in text])
     if not isinstance(text, str):
         return str(text) if text is not None else ""
-    # Gras HTML
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    # Listes
     text = re.sub(r"(\d+\.)\s", r"<br/>\1 ", text)
     text = re.sub(r"(\n|\s)\*\s", r"<br/>- ", text)
     return text.strip()
 
 
 def clean_for_audio(text):
-    """NOUVEAU: Nettoyage drastique pour l'audio"""
     if not text:
         return ""
     t = text
-    # Enlève le gras markdown
-    t = t.replace("**", "")
-    # Enlève les astérisques isolées
-    t = t.replace("*", "")
-    # Enlève les balises HTML éventuelles
+    t = t.replace("**", "").replace("*", "")
     t = re.sub(r"<[^>]+>", "", t)
-    # Remplace les tirets de liste par des virgules
     t = t.replace("-", ",")
     return t.strip()
 
 
-def analyze_page_structured(image):
+def analyze_entire_pdf(pdf_path, progress_bar):
+    """Analyse avec PROMPT STRATÉGIQUE RENFORCÉ."""
+
+    progress_bar.progress(10, text="Envoi du journal au serveur IA...")
+    uploaded_file = genai.upload_file(pdf_path, mime_type="application/pdf")
+
+    dots = 0
+    while uploaded_file.state.name == "PROCESSING":
+        time.sleep(1)
+        uploaded_file = genai.get_file(uploaded_file.name)
+        dots = (dots + 1) % 4
+        progress_bar.progress(30, text=f"Lecture intelligente du document{'.' * dots}")
+
+    if uploaded_file.state.name == "FAILED":
+        return []
+
+    progress_bar.progress(60, text="Élaboration de la stratégie pour chaque offre...")
+
+    # --- PROMPT CLÉ : C'EST ICI QUE L'IA DEVIENT INTELLIGENTE ---
     prompt = f"""
-    Analyste NOVATECH. Contexte : {NOVATECH_CONTEXT}
-    Analyse cette page. Trouve les appels d'offres (Numérique, Énergie, BTP, Santé, Éducation).
-    JSON Requis : [{{ "titre": "...", "secteur": "...", "date_limite": "...", "conditions": "...", "Bénéfice Directeur": "...", "Mise en Oeuvre": "..." }}]
-    Si vide : []
+    Tu es le Directeur Technique et Stratégique de NOVATECH.
+    {NOVATECH_CONTEXT}
+    
+    TA MISSION :
+    1. Analyse ce journal entier.
+    2. Repère TOUS les Appels d'Offres où Novatech peut postuler (même partiellement).
+    3. Pour chaque offre, Rédige une "Suggestion Stratégique" (Bénéfice Directeur).
+    
+    RÈGLE POUR LA "SUGGESTION STRATÉGIQUE" :
+    - Ne dis PAS : "C'est une bonne opportunité". C'est inutile.
+    - DIS PLUTÔT : "Utiliser notre expertise [Expertise X] pour le lot 1 et notre expertise [Expertise Y] pour le lot 2."
+    - Explique COMMENT nos domaines (Réseau, Solaire, Dev, Sécurité...) s'appliquent ici.
+    - Si c'est du BTP, cherche la partie "Câblage" ou "Électricité" pour nous placer.
+
+    Format JSON attendu :
+    [
+      {{
+        "titre": "Titre complet de l'AO",
+        "secteur": "Secteur principal",
+        "date_limite": "Date ou 'Non spécifié'",
+        "conditions": "Conditions clés (CA, agrément...)",
+        "Bénéfice Directeur": "La stratégie concrète : Quel domaine Novatech activer ?",
+        "Mise en Oeuvre": "Action technique immédiate (ex: Contacter le partenaire X, Acheter le dossier...)"
+      }}
+    ]
+    Si rien trouvé : []
     """
+
     try:
         response = model.generate_content(
-            [prompt, image],
+            [prompt, uploaded_file],
             generation_config={"response_mime_type": "application/json"},
         )
+        uploaded_file.delete()
+        progress_bar.progress(90, text="Finalisation du rapport...")
         return json.loads(response.text)
-    except:
+    except Exception as e:
+        print(f"Erreur API : {e}")
         return []
 
 
 def generate_script(all_opportunities):
-    """MODIFIÉ: Script incluant Conditions et Bénéfice + Nettoyage"""
-    script_parts = ["Bonjour Monsieur le Directeur. Voici le point de veille."]
-
+    script_parts = [
+        "Bonjour Monsieur le Directeur. Voici les opportunités et ma suggestion stratégique pour chacune."
+    ]
     for idx, o in enumerate(all_opportunities):
-        # Nettoyage avant insertion dans le prompt
         titre = clean_for_audio(o.get("titre", ""))
         date = clean_for_audio(o.get("date_limite", ""))
         cond = clean_for_audio(o.get("conditions", "Conditions standards"))
-        gain = clean_for_audio(o.get("Bénéfice Directeur", ""))
+        # Ici l'IA va lire la stratégie concrète (ex: "Utilisons notre pôle solaire...")
+        strat = clean_for_audio(o.get("Bénéfice Directeur", "Stratégie à définir"))
+        action = clean_for_audio(o.get("Mise en Oeuvre", "Action standard"))
 
         script_parts.append(f"Opportunité {idx+1}: {titre}.")
         script_parts.append(f"Date limite: {date}.")
-        script_parts.append(f"Conditions d'admissibilité: {cond}.")
-        script_parts.append(f"Intérêt pour vous: {gain}.")
-        script_parts.append("Passons à la suivante.")
+        script_parts.append(f"Conditions: {cond}.")
+        script_parts.append(f"Suggestion Stratégique: {strat}.")
+        script_parts.append(f"Action requise: {action}.")
+        script_parts.append("Suivante.")
 
-    script_parts.append("Détails complets dans le PDF joint.")
+    script_parts.append("Fin du briefing. Le détail est dans le PDF.")
     return " ".join(script_parts)
 
 
@@ -318,7 +225,6 @@ def generate_audio(text):
     if not text:
         return None
     try:
-        # Le texte est déjà nettoyé par generate_script via clean_for_audio
         tts = gTTS(text=text, lang="fr", tld="fr")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
             tts.save(fp.name)
@@ -334,8 +240,6 @@ def generate_pdf_report(all_ops):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter)
         styles = getSampleStyleSheet()
-
-        # Styles perso basés sur reportlab standard pour rester compatible
         styles.add(
             ParagraphStyle(
                 name="NovaTitle",
@@ -345,11 +249,12 @@ def generate_pdf_report(all_ops):
         )
 
         elements = [
-            Paragraph("<b>Rapport Veille Novatech</b>", styles["NovaTitle"]),
+            Paragraph(
+                "<b>Rapport Veille Stratégique Novatech</b>", styles["NovaTitle"]
+            ),
             Spacer(1, 12),
         ]
         for o in all_ops:
-            # Nettoyage HTML pour PDF
             titre = clean_markdown_formatting(o.get("titre", ""))
             secteur = o.get("secteur", "")
             date = o.get("date_limite", "")
@@ -362,20 +267,18 @@ def generate_pdf_report(all_ops):
                 Paragraph(f"<i>Secteur: {secteur} | Date: {date}</i>", styles["Normal"])
             )
             elements.append(Spacer(1, 5))
-
-            # AJOUT DES CONDITIONS
             elements.append(
                 Paragraph(f"<b>📋 Conditions d'accès:</b><br/>{cond}", styles["Normal"])
             )
             elements.append(Spacer(1, 5))
-
-            # AJOUT DU BENEFICE/STRATEGIE
+            # Mise en valeur de la stratégie
             elements.append(
-                Paragraph(f"<b>💎 Stratégie DG:</b><br/>{gain}", styles["Normal"])
+                Paragraph(
+                    f"<b>💎 SUGGESTION STRATÉGIQUE (Expertises à activer):</b><br/>{gain}",
+                    styles["Normal"],
+                )
             )
             elements.append(Spacer(1, 5))
-
-            # MISE EN OEUVRE
             elements.append(
                 Paragraph(f"<b>🚀 Mise en Oeuvre:</b><br/>{action}", styles["Normal"])
             )
@@ -386,20 +289,17 @@ def generate_pdf_report(all_ops):
         doc.build(elements)
         buffer.seek(0)
         return buffer.getvalue()
-    except Exception as e:
+    except:
         return None
 
 
-def send_email_pro(
-    host, port, sender, passw, receiver, sub, all_opportunities, audio, pdf
-):
+def send_email_pro(host, port, sender, passw, receiver, sub, all_opportunities, pdf):
     try:
         msg = MIMEMultipart()
         msg["From"] = sender
         msg["To"] = receiver
         msg["Subject"] = sub
 
-        # MODIFIÉ: Corps HTML simple avec liste des titres
         list_items = ""
         for o in all_opportunities:
             titre = clean_markdown_formatting(o.get("titre", ""))
@@ -411,41 +311,34 @@ def send_email_pro(
         <body style="font-family: Arial, sans-serif;">
             <h2 style="color: #00AEEF;">💎 Nouvelles Opportunités Détectées</h2>
             <p>Bonjour Monsieur le Directeur,</p>
-            <p>Voici les appels d'offres identifiés :</p>
-            <ul>
-                {list_items}
-            </ul>
-            <p>Veuillez trouver ci-joint le briefing audio (stratégie) et le rapport PDF (détails techniques).</p>
+            <p>L'IA a identifié des appels d'offres correspondant à nos expertises :</p>
+            <ul>{list_items}</ul>
+            <p><b>Note :</b> Le briefing AUDIO (avec suggestions stratégiques) est prêt pour WhatsApp.</p>
+            <p>Veuillez trouver ci-joint le <b>Rapport PDF détaillé</b>.</p>
             <p>Cordialement,<br>NovaReader AI</p>
         </body>
         </html>
         """
-
         msg.attach(MIMEText(html_body, "html"))
-
-        if audio:
-            p = MIMEBase("application", "octet-stream")
-            p.set_payload(audio)
-            encoders.encode_base64(p)
-            p.add_header("Content-Disposition", 'attachment; filename="briefing.mp3"')
-            msg.attach(p)
         if pdf:
             p = MIMEBase("application", "octet-stream")
             p.set_payload(pdf)
             encoders.encode_base64(p)
-            p.add_header("Content-Disposition", 'attachment; filename="rapport.pdf"')
+            p.add_header(
+                "Content-Disposition", 'attachment; filename="rapport_analyse.pdf"'
+            )
             msg.attach(p)
+
         with smtplib.SMTP_SSL(host, port) as s:
             s.login(sender, passw)
             s.send_message(msg)
-        return True, "Envoyé"
+        return True, "Envoyé (PDF uniquement)"
     except Exception as e:
         return False, str(e)
 
 
 def display_modern_card(opp):
     t = clean_markdown_formatting(opp.get("titre", "")).replace("<br/>", " ")
-    # AJOUT CONDITIONS DANS LA CARTE
     c = clean_markdown_formatting(opp.get("conditions", "")).replace("<br/>", "<br>")
     b = clean_markdown_formatting(opp.get("Bénéfice Directeur", "")).replace(
         "<br/>", "<br>"
@@ -460,13 +353,12 @@ def display_modern_card(opp):
         <div class="opp-title">{t}</div>
         <div class="opp-meta">
             <span>📅 Limite: <b>{opp.get('date_limite','?')}</b></span>
-            <span>📄 Page {opp.get('page','?')}</span>
         </div>
         <div class="section-title">📋 Conditions</div>
         <div class="section-content">{c}</div>
-        <div class="section-title">💎 Bénéfice Directeur</div>
+        <div class="section-title">💎 Suggestion Stratégique (Expertises)</div>
         <div class="section-content">{b}</div>
-        <div class="section-title">🚀 Action Immédiate</div>
+        <div class="section-title">🚀 Mise en Œuvre</div>
         <div class="section-content">{m}</div>
     </div>
     """
@@ -474,21 +366,14 @@ def display_modern_card(opp):
 
 
 # =========================================================================
-# === INTERFACE UTILISATEUR (DESIGN MODERNE - INCHANGÉ) ===
+# === INTERFACE UTILISATEUR ===
 # =========================================================================
 
-# HEADER
 st.markdown(
-    """
-<div class="main-header">
-    <h1>💎 NovaReader AI</h1>
-    <p>L'intelligence artificielle au service de la stratégie Novatech</p>
-</div>
-""",
+    """<div class="main-header"><h1>💎 NovaReader AI</h1><p>L'intelligence artificielle au service de la stratégie Novatech</p></div>""",
     unsafe_allow_html=True,
 )
 
-# SECTION CONFIGURATION (Layout 2 colonnes)
 col_left, col_right = st.columns([1.5, 1], gap="large")
 
 with col_left:
@@ -497,18 +382,18 @@ with col_left:
         "Déposez le fichier PDF ici (crypté ou non)", type="pdf"
     )
 
-    # Reset logique si nouveau fichier
     if (
         uploaded_pdf
         and st.session_state.get("last_uploaded_pdf_name") != uploaded_pdf.name
     ):
         st.session_state.clear()
         st.session_state["receiver_email"] = DEFAULT_RECEIVER_EMAIL
+        st.session_state["whatsapp_number"] = DEFAULT_WHATSAPP_NUMBER
         st.session_state["last_uploaded_pdf_name"] = uploaded_pdf.name
         st.rerun()
 
 with col_right:
-    st.markdown("### 🔐 Sécurité & Envoi")
+    st.markdown("### 🔐 Envoi & Contacts")
     mode = st.radio(
         "Méthode de déchiffrement", ["IA (Automatique)", "Code Manuel"], horizontal=True
     )
@@ -523,31 +408,33 @@ with col_right:
         man_pass = None
 
     rec_email = st.text_input(
-        "Email du Destinataire (DG)", value=st.session_state["receiver_email"]
+        "Email du DG (Pour le PDF)", value=st.session_state["receiver_email"]
     )
     st.session_state["receiver_email"] = rec_email
+    wa_num = st.text_input(
+        "Numéro WhatsApp DG",
+        value=st.session_state["whatsapp_number"],
+        placeholder="+227 00 00 00 00",
+    )
+    st.session_state["whatsapp_number"] = wa_num
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# BOUTON D'ACTION
 if not st.session_state["analyse_completee"]:
     col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
     with col_btn_2:
         btn_start = st.button(
-            "✨ LANCER L'ANALYSE STRATÉGIQUE", disabled=not uploaded_pdf
+            "✨ LANCER L'ANALYSE (OPTIMISÉE)", disabled=not uploaded_pdf
         )
 
-    # LOGIQUE DE TRAITEMENT
     if btn_start and uploaded_pdf:
-        status_container = st.status(
-            "⚙️ Initialisation des moteurs IA...", expanded=True
-        )
+        status_container = st.status("⚙️ Initialisation...", expanded=True)
         try:
             # 1. DECRYPTAGE
             pwd = man_pass
             if mode == "IA (Automatique)" and file_pass:
                 status_container.update(
-                    label="🔑 L'IA cherche le mot de passe...", state="running"
+                    label="🔑 Recherche du mot de passe...", state="running"
                 )
                 img = convert_from_bytes(file_pass.getvalue())[0]
                 pwd = model.generate_content(
@@ -558,10 +445,7 @@ if not st.session_state["analyse_completee"]:
                 ).text.strip()
 
             if not pwd or len(pwd) != 4:
-                status_container.update(
-                    label="❌ Erreur de mot de passe", state="error"
-                )
-                st.error("Le code doit faire 4 caractères.")
+                status_container.update(label="❌ Erreur code", state="error")
                 st.stop()
 
             status_container.update(label="🔓 Déchiffrement du PDF...", state="running")
@@ -574,38 +458,23 @@ if not st.session_state["analyse_completee"]:
                 for p in reader.pages:
                     writer.add_page(p)
                 writer.write(tmp)
-                path = tmp.name
+                path_decrypted = tmp.name
 
             # 2. ANALYSE
             status_container.update(
-                label="🧠 Analyse Cognitive en cours (1 appel/page)...", state="running"
+                label="🧠 Envoi à Gemini (Analyse Globale)...", state="running"
             )
-            images = convert_from_bytes(open(path, "rb").read())
-            st.session_state["num_pages_analyzed"] = len(images)
-            os.remove(path)
+            progress_bar = st.progress(0, text="Démarrage de l'analyse...")
 
-            ops = []
-            progress_bar = st.progress(0)
+            ops = analyze_entire_pdf(path_decrypted, progress_bar)
+            os.remove(path_decrypted)
 
-            for i, img in enumerate(images):
-                time.sleep(4)  # Protection Quota
-                res = analyze_page_structured(img)
-                if res:
-                    for o in res:
-                        o["page"] = i + 1
-                        if "Bénéfice Directeur" not in o:
-                            o["Bénéfice Directeur"] = "N/A"
-                        if "Mise en Oeuvre" not in o:
-                            o["Mise en Oeuvre"] = "Voir détails"
-                        if "conditions" not in o:
-                            o["conditions"] = "Voir dossier"
-                        ops.append(o)
-                progress_bar.progress((i + 1) / len(images))
+            progress_bar.progress(100, text="Analyse terminée !")
 
             # 3. GENERATION FINALE
             if ops:
                 status_container.update(
-                    label="📝 Rédaction du briefing DG...", state="running"
+                    label="📝 Génération des rapports...", state="running"
                 )
                 scr = generate_script(ops)
                 aud = generate_audio(scr)
@@ -621,10 +490,8 @@ if not st.session_state["analyse_completee"]:
                     }
                 )
 
-                # ENVOI EMAIL
-                if aud and pdf and not st.session_state["auto_email_sent"]:
+                if pdf and not st.session_state["auto_email_sent"]:
                     sub = f"Veille Stratégique - {pd.Timestamp.now().strftime('%d/%m')}"
-                    # Appel de la fonction email mise à jour
                     ok, msg = send_email_pro(
                         SMTP_HOST,
                         SMTP_PORT,
@@ -632,20 +499,19 @@ if not st.session_state["analyse_completee"]:
                         SMTP_PASSWORD,
                         rec_email,
                         sub,
-                        ops,  # Liste des opportunités
-                        aud,
+                        ops,
                         pdf,
                     )
                     if ok:
                         st.session_state["auto_email_sent"] = True
 
                 status_container.update(
-                    label="✅ Mission accomplie !", state="complete", expanded=False
+                    label="✅ Terminé avec succès !", state="complete", expanded=False
                 )
                 st.rerun()
             else:
                 status_container.update(
-                    label="⚠️ Aucune opportunité détectée ce jour.", state="complete"
+                    label="⚠️ Aucune opportunité détectée.", state="complete"
                 )
 
         except Exception as e:
@@ -657,21 +523,16 @@ if not st.session_state["analyse_completee"]:
 
 if st.session_state["analyse_completee"]:
     st.divider()
-
-    # KPIs
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Opportunités Trouvées", len(st.session_state["all_opportunities"]))
-    kpi2.metric("Pages Analysées", st.session_state["num_pages_analyzed"])
-    kpi3.metric(
-        "Statut Email",
-        "Envoyé ✅" if st.session_state["auto_email_sent"] else "En attente ⏳",
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Opportunités", len(st.session_state["all_opportunities"]))
+    k2.metric("Mode", "Analyse Globale (1 requête)")
+    k3.metric(
+        "Email PDF", "Envoyé ✅" if st.session_state["auto_email_sent"] else "Échec"
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # ONGLETS MODERNES
-    tab_cards, tab_media, tab_data = st.tabs(
-        ["✨ VUE GALERIE", "🎙️ BRIEFING & EXPORT", "📊 DONNÉES BRUTES"]
+    tab_cards, tab_wa, tab_data = st.tabs(
+        ["✨ VUE GALERIE", "🎙️ BRIEFING WHATSAPP", "📊 DONNÉES & PDF"]
     )
 
     with tab_cards:
@@ -684,46 +545,45 @@ if st.session_state["analyse_completee"]:
         else:
             st.info("Rien à afficher.")
 
-    with tab_media:
-        c1, c2 = st.columns([1, 1])
+    with tab_wa:
+        st.markdown("### 🚀 Envoi WhatsApp Web")
+        if st.session_state["audio_file_bytes"]:
+            st.audio(st.session_state["audio_file_bytes"])
+
+        c1, c2 = st.columns(2)
+        phone = st.session_state["whatsapp_number"].replace(" ", "")
+        msg_wa = f"Bonjour DG. Briefing audio du {pd.Timestamp.now().strftime('%d/%m')} ci-joint."
+        url_wa = f"https://web.whatsapp.com/send?phone={phone}&text={urllib.parse.quote(msg_wa)}"
+
         with c1:
-            st.markdown("### 🎧 Briefing Audio")
             if st.session_state["audio_file_bytes"]:
-                st.audio(st.session_state["audio_file_bytes"])
                 st.download_button(
-                    "⬇️ Télécharger MP3",
+                    "1️⃣ Télécharger MP3 (Pour envoi)",
                     st.session_state["audio_file_bytes"],
                     "briefing.mp3",
                     "audio/mp3",
                     use_container_width=True,
                 )
         with c2:
-            st.markdown("### 📄 Rapport PDF")
-            if st.session_state["pdf_bytes"]:
-                st.markdown("Le rapport contient l'analyse détaillée pour le Comex.")
-                st.download_button(
-                    "⬇️ Télécharger PDF",
-                    st.session_state["pdf_bytes"],
-                    "rapport.pdf",
-                    "application/pdf",
-                    use_container_width=True,
-                )
-
-        st.markdown("---")
-        st.markdown("### 📝 Script Transcrit")
-        st.code(st.session_state["script_content"], language="text")
+            st.markdown(
+                f'<a href="{url_wa}" target="_blank" class="whatsapp-btn">2️⃣ Ouvrir WhatsApp Web</a>',
+                unsafe_allow_html=True,
+            )
 
     with tab_data:
+        if st.session_state["pdf_bytes"]:
+            st.download_button(
+                "⬇️ Télécharger le Rapport PDF",
+                st.session_state["pdf_bytes"],
+                "rapport.pdf",
+                "application/pdf",
+                use_container_width=True,
+            )
+            st.markdown("---")
+
         df = pd.DataFrame(st.session_state["all_opportunities"])
-        # Nettoyage pour affichage tableau propre
         if not df.empty:
-            cols_to_clean = [
-                "titre",
-                "conditions",
-                "Bénéfice Directeur",
-                "Mise en Oeuvre",
-            ]
-            for c in cols_to_clean:
+            for c in ["titre", "conditions", "Bénéfice Directeur", "Mise en Oeuvre"]:
                 if c in df.columns:
                     df[c] = df[c].apply(lambda x: re.sub(r"<[^>]+>", "", str(x)))
             st.dataframe(df, use_container_width=True, hide_index=True)
